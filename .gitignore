@@ -1,0 +1,16 @@
+/.idea/
+/build/
+/deployment/
+/dist/
+/logs/
+/tests/
+/temp/
+/releases/
+/.persistent_data/
+/.vscode/
+/.pytest_cache/
+/backup/
+/updates/
+/whl_updates/
+/examples/
+/*/logs/
