@@ -34,7 +34,7 @@ class Config:
             
             # FastAPI配置
             'api_host': '0.0.0.0',
-            'api_port': 8001,
+            'api_port': 8000,
             'api_reload': False,
             'api_workers': 1,
             

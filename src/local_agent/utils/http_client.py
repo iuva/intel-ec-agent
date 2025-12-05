@@ -199,14 +199,14 @@ class HttpClient:
         
         # 先尝试刷新token
         refresh_result = refresh_token()
-        if refresh_result == "ok":
+        if refresh_result:
             self.logger.info("token刷新成功")
             return True
         
         # 如果刷新失败，尝试重新获取token
         self.logger.warning("token刷新失败，尝试重新获取token...")
         auth_result = auth_token()
-        if auth_result == "ok":
+        if auth_result:
             self.logger.info("token重新获取成功")
             return True
         

@@ -16,6 +16,9 @@ import ctypes
 import platform
 from pathlib import Path
 
+# 导入增强的子进程工具
+from local_agent.utils.subprocess_utils import run_with_logging
+
 # 添加src目录到Python路径
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
@@ -48,8 +51,9 @@ def is_admin():
 def check_service_exists(service_name="LocalAgentService"):
     """检查服务是否已存在且运行中"""
     try:
-        result = subprocess.run(
+        result = run_with_logging(
             ['sc', 'query', service_name], 
+            command_name="check_windows_service",
             capture_output=True, 
             text=True, 
             timeout=10
@@ -161,8 +165,9 @@ def install_service_via_nssm():
         service_name = "LocalAgentService"
         
         # 安装服务
-        result = subprocess.run(
+        result = run_with_logging(
             [nssm_path, 'install', service_name, exe_path],
+            command_name="nssm_install_service",
             capture_output=True, 
             text=True, 
             timeout=30
@@ -172,13 +177,18 @@ def install_service_via_nssm():
             return False, f"服务安装失败: {result.stderr}"
         
         # 配置服务参数
-        subprocess.run([nssm_path, 'set', service_name, 'Description', '本地代理服务 - 自动保活'], timeout=10)
-        subprocess.run([nssm_path, 'set', service_name, 'DisplayName', '本地代理服务'], timeout=10)
-        subprocess.run([nssm_path, 'set', service_name, 'Start', 'SERVICE_AUTO_START'], timeout=10)
-        subprocess.run([nssm_path, 'set', service_name, 'AppDirectory', str(working_dir)], timeout=10)
+        run_with_logging([nssm_path, 'set', service_name, 'Description', '本地代理服务 - 自动保活'], 
+                        command_name="nssm_set_description", timeout=10)
+        run_with_logging([nssm_path, 'set', service_name, 'DisplayName', '本地代理服务'], 
+                        command_name="nssm_set_displayname", timeout=10)
+        run_with_logging([nssm_path, 'set', service_name, 'Start', 'SERVICE_AUTO_START'], 
+                        command_name="nssm_set_startup", timeout=10)
+        run_with_logging([nssm_path, 'set', service_name, 'AppDirectory', str(working_dir)], 
+                        command_name="nssm_set_workingdir", timeout=10)
         
         # 启动服务
-        subprocess.run([nssm_path, 'start', service_name], timeout=10)
+        run_with_logging([nssm_path, 'start', service_name], 
+                        command_name="nssm_start_service", timeout=10)
         
         return True, "服务安装成功"
         
@@ -189,6 +199,11 @@ def install_service_via_nssm():
 def auto_register_service():
     """自动注册系统服务"""
     logger = get_logger(__name__)
+
+    exe_path = sys.executable
+    if 'python.exe' in exe_path:
+        logger.warning("[INFO] 开发环境运行，跳过自动服务注册")
+        return False
     
     if not is_admin():
         logger.warning("[WARN] 未以管理员权限运行，跳过自动服务注册")

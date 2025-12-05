@@ -277,11 +277,9 @@ class HeartbeatManager:
             # 这里需要根据实际的WebSocket实现进行调整
             
             # 临时实现：如果WebSocket客户端存在且连接正常
-            from ..websocket.client import WebSocketClient
-            
-            # 注意：这里需要根据实际代码结构调整
-            # 如果WebSocket功能未启用，返回True
-            return True
+            from ..websocket.global_websocket_manager import get_websocket_manager
+            manager = await get_websocket_manager()
+            return manager.is_running() == manager.is_supposed()
             
         except Exception as e:
             self.logger.warning(f"验证WebSocket健康状态异常: {e}")

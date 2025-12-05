@@ -31,6 +31,9 @@ class WebSocketClient:
         self.reconnect_task = None
         self.reconnect_attempts = 0
         
+        # 停止标志 - 用于判断是否是通过stop方法停止的服务
+        self.stopped_by_user = False
+        
         # 回调函数
         self.on_message_callback: Optional[Callable] = None
         self.on_connect_callback: Optional[Callable] = None
@@ -77,6 +80,7 @@ class WebSocketClient:
             
             self.connected = True
             self.reconnect_attempts = 0
+            self.stopped_by_user = False  # 重置停止标志
             
             self.logger.info("WebSocket连接成功")
             
@@ -107,12 +111,20 @@ class WebSocketClient:
             
             return False
     
-    async def disconnect(self):
-        """断开WebSocket连接"""
+    async def disconnect(self, stopped_by_user: bool = False):
+        """
+        断开WebSocket连接
+        
+        Args:
+            stopped_by_user: 是否是通过用户主动停止的
+        """
         if not self.connected:
             return
         
         self.logger.info("正在断开WebSocket连接...")
+        
+        # 设置停止标志
+        self.stopped_by_user = stopped_by_user
         
         # 取消任务
         if self.send_task:
@@ -137,7 +149,6 @@ class WebSocketClient:
     
     async def _get_auth_headers(self) -> dict:
         """获取Authorization请求头"""
-        from ..core.auth import auth_token
         
         # 等待auth_token完成初始化
         token = await self._wait_for_auth_token()
@@ -161,9 +172,11 @@ class WebSocketClient:
             if token:
                 self.logger.info("成功获取到token")
                 return token
-            
-            # 等待500ms后重试
-            await asyncio.sleep(0.5)
+            else:
+                from ..core.auth import auth_token
+                auth_token()
+                return cache.get(AUTHORIZATION_CACHE_KEY)
+                
         
         self.logger.error(f"等待token超时({timeout}秒)")
         return None
@@ -175,13 +188,13 @@ class WebSocketClient:
         try:
             # 先尝试刷新token
             self.logger.info("尝试刷新token...")
-            if await refresh_token():
+            if refresh_token():
                 self.logger.info("token刷新成功")
                 return True
             
             # 刷新失败则重新获取
             self.logger.info("刷新失败，尝试重新获取token...")
-            if await auth_token():
+            if auth_token():
                 self.logger.info("token重新获取成功")
                 return True
             
@@ -198,8 +211,8 @@ class WebSocketClient:
         if await self._refresh_auth_token():
             return True
         
-        # 刷新失败则每5分钟重试一次
-        retry_interval = 300  # 5分钟
+        # 刷新失败则每1分钟重试一次
+        retry_interval = 60  # 1分钟
         
         while True:
             self.logger.info(f"等待{retry_interval}秒后重试鉴权...")
@@ -293,7 +306,10 @@ class WebSocketClient:
                 self.logger.error(f"接收消息任务错误: {e}")
                 await self._handle_connection_error(e)
                 break
-    
+
+    def is_connected(self):
+        return self.connected
+
     async def _handle_connection_error(self, error: Exception):
         """处理连接错误"""
         self.logger.error(f"WebSocket连接错误: {error}")
@@ -308,6 +324,11 @@ class WebSocketClient:
     
     async def _start_reconnect(self):
         """启动重连机制"""
+        # 检查是否是通过stop方法停止的服务，如果是则不重连
+        if self.stopped_by_user:
+            self.logger.info("检测到服务是通过stop方法停止的，不进行重连")
+            return
+        
         if self.reconnect_task and not self.reconnect_task.done():
             return
         

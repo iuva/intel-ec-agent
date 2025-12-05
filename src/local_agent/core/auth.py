@@ -16,7 +16,7 @@ def auth_token():
     local_info = cache.get(LOCAL_INFO_CACHE_KEY)
     if not local_info:
         logger.error("本地信息缓存为空，无法获取鉴权token")
-        return None
+        return False
 
     # 发起网络请求
     res = http_post(
@@ -35,9 +35,9 @@ def auth_token():
         cache.set(AUTH_INFO_CACHE_KEY, data)
 
     else:
-        return None
+        return False
 
-    return "ok"
+    return True
 
 
 
@@ -45,7 +45,7 @@ def refresh_token():
     """刷新鉴权token"""
     auth_info = cache.get(AUTH_INFO_CACHE_KEY)
     if not auth_info:
-        return None
+        return False
 
     # 发起网络请求
     res = http_post(
@@ -65,6 +65,6 @@ def refresh_token():
         cache.set(AUTHORIZATION_CACHE_KEY, auth_token, ttl=data.get('expires_in'))
         cache.set(AUTH_INFO_CACHE_KEY, data)
     else:
-        return None
+        return False
 
-    return "ok"
+    return True

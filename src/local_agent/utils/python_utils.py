@@ -17,12 +17,13 @@ Python工具类
 
 import os
 import sys
-import subprocess
 import glob
 from typing import Optional
 
 # 导入项目全局组件
 from ..logger import get_logger
+# 导入增强的子进程工具
+from .subprocess_utils import run_with_logging, run_with_logging_safe
 # 延迟导入以避免循环依赖
 # from ..core.global_cache import cache
 # 直接定义常量以避免循环依赖
@@ -140,18 +141,20 @@ class PythonUtils:
         # 查找PATH环境变量中的Python（优先）
         for cmd in ["python", "python3", "py"]:
             try:
-                result = subprocess.run([cmd, "--version"], 
-                                     capture_output=True, text=True, timeout=5)
+                result = run_with_logging([cmd, "--version"], 
+                                        command_name="check_python_version",
+                                        capture_output=True, text=True, timeout=5)
                 if result.returncode == 0:
                     # 获取完整路径
-                    path_result = subprocess.run([cmd, "-c", "import sys; print(sys.executable)"],
-                                               capture_output=True, text=True, timeout=5)
+                    path_result = run_with_logging([cmd, "-c", "import sys; print(sys.executable)"],
+                                                 command_name="get_python_executable_path",
+                                                 capture_output=True, text=True, timeout=5)
                     if path_result.returncode == 0:
                         python_path = path_result.stdout.strip()
                         if os.path.exists(python_path):
                             logger.info(f"在PATH中找到Python: {python_path}")
                             return python_path
-            except (subprocess.TimeoutExpired, subprocess.SubprocessError, FileNotFoundError):
+            except Exception:
                 continue
         
         # 查找常见安装路径
@@ -183,9 +186,10 @@ class PythonUtils:
         
         try:
             # 获取Python版本信息
-            result = subprocess.run([python_path, "-c", 
-                                   "import sys; print('.'.join(map(str, sys.version_info[:2])))"],
-                                  capture_output=True, text=True, timeout=10)
+            result = run_with_logging([python_path, "-c", 
+                                      "import sys; print('.'.join(map(str, sys.version_info[:2])))"],
+                                     command_name="validate_python_version",
+                                     capture_output=True, text=True, timeout=10)
             
             if result.returncode == 0:
                 version_str = result.stdout.strip()
@@ -207,9 +211,6 @@ class PythonUtils:
                 logger.warning(f"获取Python版本失败: {result.stderr}")
                 return False
                 
-        except subprocess.TimeoutExpired:
-            logger.warning("获取Python版本超时")
-            return False
         except Exception as e:
             logger.warning(f"验证Python版本时发生错误: {str(e)}")
             return False

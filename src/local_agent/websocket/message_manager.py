@@ -180,11 +180,11 @@ class WebSocketMessageManager:
                 if message_type not in self._handlers:
                     self._handlers[message_type] = []
                 self._handlers[message_type].append(handler)
+                self.logger.info(f"注册永久消息处理器 - 类型: {message_type}, 描述: {description}, 共{len(self._handlers.values())} 个处理器")
         
         # 异步注册
         asyncio.create_task(register())
-        
-        self.logger.info(f"注册永久消息处理器 - 类型: {message_type}, 描述: {description}")
+
     
     async def handle_message(self, message: str) -> bool:
         """

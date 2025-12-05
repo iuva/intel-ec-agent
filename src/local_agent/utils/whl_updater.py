@@ -19,7 +19,6 @@ import os
 import sys
 import time
 import tempfile
-import subprocess
 import shutil
 import re
 from pathlib import Path
@@ -27,6 +26,8 @@ from typing import Optional, Tuple
 
 # 导入项目全局组件
 from ..logger import get_logger
+# 导入增强的子进程工具
+from .subprocess_utils import run_with_logging, run_with_logging_safe
 # 延迟导入以避免循环依赖
 def _get_download_file():
     from .file_downloader import download_file_async
@@ -191,8 +192,9 @@ class WhlUpdater:
             self.logger.debug(f"安装命令: {' '.join(pip_command)}")
             
             # 执行pip安装
-            result = subprocess.run(
+            result = run_with_logging(
                 pip_command,
+                command_name="pip_install_whl",
                 capture_output=True,
                 text=True,
                 timeout=self.timeout,
@@ -218,8 +220,9 @@ class WhlUpdater:
                     if cleanup_success:
                         self.logger.info("无效分发清理完成，重新尝试安装")
                         # 重新执行安装
-                        result = subprocess.run(
+                        result = run_with_logging(
                             pip_command,
+                            command_name="pip_install_retry",
                             capture_output=True,
                             text=True,
                             timeout=self.timeout,
@@ -235,11 +238,6 @@ class WhlUpdater:
                 self.logger.error(f"whl包安装失败: {error_msg}")
                 return False, error_msg
                 
-        except subprocess.TimeoutExpired:
-            error_msg = f"pip安装超时 ({self.timeout}秒)"
-            self.logger.error(error_msg)
-            return False, error_msg
-            
         except Exception as e:
             error_msg = f"执行pip安装时发生错误: {e}"
             self.logger.error(error_msg)
@@ -258,14 +256,14 @@ class WhlUpdater:
         try:
             # 使用pip check命令检查无效分发
             check_command = [python_path, "-m", "pip", "check"]
-            result = subprocess.run(check_command, capture_output=True, text=True)
+            result = run_with_logging(check_command, command_name="pip_check", capture_output=True, text=True)
             
             if result.returncode != 0:
                 self.logger.warning(f"检测到包环境问题: {result.stdout.strip()}")
                 
                 # 尝试使用pip cache purge清理缓存
                 cache_command = [python_path, "-m", "pip", "cache", "purge"]
-                cache_result = subprocess.run(cache_command, capture_output=True, text=True)
+                cache_result = run_with_logging(cache_command, command_name="pip_cache_purge", capture_output=True, text=True)
                 
                 if cache_result.returncode == 0:
                     self.logger.info("pip缓存清理成功")
@@ -274,7 +272,7 @@ class WhlUpdater:
                 
                 # 尝试修复包环境
                 fix_command = [python_path, "-m", "pip", "install", "--upgrade", "pip", "setuptools", "wheel"]
-                fix_result = subprocess.run(fix_command, capture_output=True, text=True)
+                fix_result = run_with_logging(fix_command, command_name="pip_tools_upgrade", capture_output=True, text=True)
                 
                 if fix_result.returncode == 0:
                     self.logger.info("pip工具更新成功")
@@ -311,7 +309,7 @@ class WhlUpdater:
             
             # 获取当前安装版本
             freeze_command = [python_path, "-m", "pip", "freeze", "--all"]
-            result = subprocess.run(freeze_command, capture_output=True, text=True)
+            result = run_with_logging(freeze_command, command_name="pip_freeze", capture_output=True, text=True)
             
             if result.returncode == 0:
                 # 查找包信息
@@ -361,7 +359,7 @@ class WhlUpdater:
             
             # 执行回滚安装
             rollback_command = [python_path, "-m", "pip", "install", backup_info]
-            result = subprocess.run(rollback_command, capture_output=True, text=True)
+            result = run_with_logging(rollback_command, command_name="pip_rollback", capture_output=True, text=True)
             
             if result.returncode == 0:
                 self.logger.info(f"回滚成功: {backup_info}")

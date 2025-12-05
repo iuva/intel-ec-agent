@@ -65,6 +65,11 @@ class HostInit:
         if not Environment.is_development():
             self.check_versions()
 
+        # TODO 获取硬件信息, 如果15分钟还没有收到硬件信息，则自动重新调用
+
+        # dmrRes = DMR.get_hardware_info()
+        # if dmrRes is not None:
+        #     self.logger.info(f"dmr-config sut 输出: {dmrRes}")
 
 
 

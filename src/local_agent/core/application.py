@@ -17,10 +17,8 @@ from ..config import get_config
 from ..logger import get_logger
 from ..api.server import APIServer
 from .host_init import HostInit
-from ..websocket.message_manager import message_manager
-from ..websocket.message_sender import send_message
-
-# WebSocketClient将在需要时延迟导入以避免循环依赖
+from ..websocket.message_sender import send_message_with_queue
+from ..utils.timer_utils import set_timeout
 
 
 class LocalAgentApplication:
@@ -39,10 +37,6 @@ class LocalAgentApplication:
         
         # 组件实例
         self.api_server: Optional[APIServer] = None
-        self.websocket_client: Optional[WebSocketClient] = None
-        
-        # 自更新管理器
-        self.auto_updater: Optional[AutoUpdater] = None
         
         # 唤醒锁实例 - 在应用初始化时设置
         self.wake_lock = None
@@ -106,22 +100,6 @@ class LocalAgentApplication:
             # 初始化API服务器
             self.api_server = APIServer()
             
-            # 延迟导入WebSocket客户端以避免循环导入
-            from ..websocket.client import WebSocketClient
-            
-            # 初始化WebSocket客户端
-            self.websocket_client = WebSocketClient()
-            
-            # 初始化自更新管理器
-            from local_agent.auto_update.auto_updater import AutoUpdater
-            self.auto_updater = AutoUpdater()
-            
-            # 设置WebSocket回调
-            await self._setup_websocket_callbacks()
-            
-            # 注册WebSocket消息处理器
-            await self._register_websocket_handlers()
-
             # 业务流程初始化
             HostInit()
 
@@ -132,55 +110,7 @@ class LocalAgentApplication:
             self.logger.error(f"应用初始化失败: {e}")
             return False
     
-    async def _setup_websocket_callbacks(self):
-        """设置WebSocket回调函数"""
-        if not self.websocket_client:
-            return
-        
-        async def on_connect():
-            self.logger.info("WebSocket连接成功")
-        
-        async def on_disconnect():
-            self.logger.warning("WebSocket连接断开")
-        
-        async def on_message(message):
-            self.logger.debug(f"收到WebSocket消息: {message}")
-            # 处理不同类型的消息
-            await self._handle_websocket_message(message)
-        
-        async def on_error(error):
-            self.logger.error(f"WebSocket错误: {error}")
-        
-        self.websocket_client.set_on_connect(on_connect)
-        self.websocket_client.set_on_disconnect(on_disconnect)
-        self.websocket_client.set_on_message(on_message)
-        self.websocket_client.set_on_error(on_error)
-    
-    async def _register_websocket_handlers(self):
-        """注册WebSocket消息处理器"""
-        from ..websocket.message_handler import register_websocket_handlers
-        
-        # 使用新的消息处理器封装
-        register_websocket_handlers(self)
-    
-    async def _handle_websocket_message(self, message: str):
-        """处理WebSocket消息（兼容旧逻辑，新消息由消息管理器处理）"""
-        try:
-            # 解析JSON消息
-            data = message
-            if isinstance(message, str):
-                data = json.loads(message)
-            
-            message_type = data.get('type', '')
-            
-            # 记录消息接收，但实际处理由消息管理器完成
-            self.logger.debug(f"收到WebSocket消息，类型: {message_type}")
-            
-            # 这里不再需要具体的消息处理逻辑，因为已经通过消息管理器注册了处理器
-            # 消息管理器会自动调用相应的处理器
-            
-        except Exception as e:
-            self.logger.error(f"处理WebSocket消息失败: {e}")
+
     
     async def start(self) -> bool:
         """启动应用"""
@@ -198,8 +128,7 @@ class LocalAgentApplication:
                 self.logger.info("启用debug模式配置...")
             
             # 初始化应用
-            if not await self.initialize():
-                return False
+            await self.initialize()
             
             # 启动API服务器（非阻塞方式）
             if self.api_server:
@@ -210,17 +139,11 @@ class LocalAgentApplication:
                 self.logger.debug(f"等待API服务器启动，等待时间: {wait_time}秒")
                 await asyncio.sleep(wait_time)
             
-            # 连接WebSocket服务器（非阻塞方式）
-            if self.websocket_client:
-                self.websocket_task = asyncio.create_task(self.websocket_client.connect())
-                # 等待WebSocket连接完成
-                await asyncio.sleep(1)
-            
             # 启动保活任务
             self.keep_alive_task = asyncio.create_task(self._keep_alive_loop())
             
             # 启动健康检查任务
-            self.health_check_task = asyncio.create_task(self._health_check_loop())
+            # self.health_check_task = asyncio.create_task(self._health_check_loop())
             
             self.running = True
             self.logger.info("本地代理应用启动成功")
@@ -235,6 +158,12 @@ class LocalAgentApplication:
             await self.stop()
             return False
     
+    def _handle_queue_response(self, response: Dict[str, Any]):
+        """处理队列消息的响应"""
+        self.logger.info(f"队列消息响应: {response}")
+        # 这里可以添加具体的响应处理逻辑
+
+
     async def stop(self):
         """停止应用"""
         if not self.running:
@@ -258,20 +187,21 @@ class LocalAgentApplication:
         if hasattr(self, 'api_server_task') and self.api_server_task:
             self.api_server_task.cancel()
             tasks_to_cancel.append(self.api_server_task)
-        if hasattr(self, 'websocket_task') and self.websocket_task:
-            self.websocket_task.cancel()
-            tasks_to_cancel.append(self.websocket_task)
         
         # 等待所有任务取消完成
         if tasks_to_cancel:
             await asyncio.gather(*tasks_to_cancel, return_exceptions=True)
         
-        # 停止WebSocket客户端
-        if self.websocket_client:
-            try:
-                await self.websocket_client.disconnect()
-            except Exception as e:
-                self.logger.warning(f"停止WebSocket客户端时出错: {e}")
+        # 停止WebSocket服务（使用全局单例管理器）
+        try:
+            from ..websocket.global_websocket_manager import get_websocket_manager
+            manager = await get_websocket_manager()
+            if await manager.stop():
+                self.logger.info("WebSocket服务停止成功")
+            else:
+                self.logger.warning("WebSocket服务停止失败")
+        except Exception as e:
+            self.logger.error(f"停止WebSocket服务时出错: {e}")
         
         # 停止API服务器
         if self.api_server:
@@ -337,12 +267,16 @@ class LocalAgentApplication:
             except Exception as e:
                 self.logger.warning(f"停止API服务器时出错: {e}")
         
-        # 停止WebSocket客户端
-        if self.websocket_client:
-            try:
-                await self.websocket_client.disconnect()
-            except Exception as e:
-                self.logger.warning(f"停止WebSocket客户端时出错: {e}")
+        # 停止WebSocket服务
+        try:
+            from ..websocket.global_websocket_manager import get_websocket_manager
+            manager = await get_websocket_manager()
+            if await manager.stop():
+                self.logger.info("WebSocket服务停止成功")
+            else:
+                self.logger.warning("WebSocket服务停止失败")
+        except Exception as e:
+            self.logger.error(f"停止WebSocket服务时出错: {e}")
         
         # 等待一段时间
         await asyncio.sleep(1)
@@ -355,15 +289,18 @@ class LocalAgentApplication:
             except Exception as e:
                 self.logger.error(f"API服务器重启失败: {e}")
                 return False
-        
-        # 重新连接WebSocket
-        if self.websocket_client:
-            try:
-                await self.websocket_client.connect()
-                self.logger.info("WebSocket客户端重连成功")
-            except Exception as e:
-                self.logger.warning(f"WebSocket客户端重连失败: {e}")
-        
+
+        # 重新启动WebSocket服务
+        try:
+            from ..websocket.global_websocket_manager import get_websocket_manager
+            manager = await get_websocket_manager()
+            if await manager.start():
+                self.logger.info("WebSocket服务重启成功")
+            else:
+                self.logger.warning("WebSocket服务重启失败")
+        except Exception as e:
+            self.logger.error(f"重启WebSocket服务时出错: {e}")
+
         return True
     
     async def _main_loop(self):
@@ -437,28 +374,26 @@ class LocalAgentApplication:
             await self._restart_components()
             return
         
-        # 检查WebSocket连接状态
-        if (self.websocket_client and 
-            self.websocket_client.connected and 
-            not await self._check_websocket_alive()):
-            self.logger.warning("WebSocket连接异常，准备重连")
-            await self.websocket_client.disconnect()
-            await self.websocket_client.connect()
-    
-    async def _check_websocket_alive(self) -> bool:
-        """检查WebSocket连接是否存活"""
-        if not self.websocket_client or not self.websocket_client.connected:
-            return False
-        
+        # 检查WebSocket服务状态
         try:
-            # 发送ping消息测试连接
-            await self.websocket_client.send_message({
-                "type": "heartbeat",
-                "timestamp": datetime.now().isoformat()
-            })
-            return True
-        except Exception:
-            return False
+            from ..websocket.global_websocket_manager import get_websocket_manager
+            manager = await get_websocket_manager()
+            if not manager.is_running() and manager.is_supposed():
+                self.logger.warning("WebSocket服务异常，准备重启")
+                await manager.stop()
+                await asyncio.sleep(1)
+                await manager.start()
+            # 如果服务运行正常，发送心跳
+            if manager.is_running() and manager.is_supposed():
+                await manager.send_message({
+                    "type": "heartbeat",
+                    "timestamp": datetime.now().isoformat()
+                })
+
+        except Exception as e:
+            self.logger.error(f"检查WebSocket服务状态时出错: {e}")
+    
+
     
     async def _perform_health_check(self) -> Dict[str, Any]:
         """执行健康检查"""
@@ -475,11 +410,16 @@ class LocalAgentApplication:
             if not api_healthy:
                 health_status["healthy"] = False
         
-        # 检查WebSocket客户端
-        if self.websocket_client:
-            ws_healthy = self.websocket_client.connected
-            health_status["components"]["websocket_client"] = ws_healthy
-            # WebSocket连接失败不影响整体健康状态
+        # 检查WebSocket服务
+        try:
+            from ..websocket.global_websocket_manager import get_websocket_manager
+            manager = await get_websocket_manager()
+            ws_healthy = manager.is_running()
+            health_status["components"]["websocket_service"] = ws_healthy
+            # WebSocket服务失败不影响整体健康状态
+        except Exception as e:
+            self.logger.error(f"检查WebSocket服务健康状态时出错: {e}")
+            health_status["components"]["websocket_service"] = False
         
         # 检查内存使用
         import psutil
@@ -492,16 +432,7 @@ class LocalAgentApplication:
         
         return health_status
     
-    async def _send_keep_alive_heartbeat(self):
-        """发送保活心跳"""
-        if self.websocket_client and self.websocket_client.connected:
-            try:
-                await self.websocket_client.send_message({
-                    "type": "heartbeat",
-                    "timestamp": datetime.now().isoformat()
-                })
-            except Exception as e:
-                self.logger.warning(f"发送心跳失败: {e}")
+
     
 
 

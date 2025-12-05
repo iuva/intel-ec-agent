@@ -30,4 +30,23 @@ class DMR:
             text=True,
             timeout=10  # 10秒超时
         )
-            
+    
+    @staticmethod
+    def get_hardware_info():
+        """
+        调用系统命令 dmr-config sut
+        
+        如果响应为找不到 dmr-config 命令，方法返回 None
+        否则方法返回 dmr-config sut 的响应原字符串
+        
+        Returns:
+            str | None: dmr-config sut 命令的输出，如果命令不存在则返回 None
+        """
+        # 使用增强的子进程执行工具，自动记录执行过程和结果
+        return run_con_or_none(
+            ['dmr-config', 'sut'],
+            command_name='dmr-config',
+            capture_output=True,
+            text=True,
+            timeout=10  # 10秒超时
+        )

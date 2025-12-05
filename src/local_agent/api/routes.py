@@ -57,7 +57,7 @@ async def report_tool_result(request: EKResultRequest):
             "timestamp": datetime.now().isoformat()
         }
         
-        logger.info(f"EK结果详情: {ek_result_info}")
+        logger.info(f"结果详情: {ek_result_info}")
 
         if request.tool_name == 'ek':
             # 测试结果上报
@@ -75,12 +75,24 @@ async def report_tool_result(request: EKResultRequest):
             )
         elif request.tool_name == 'em':
             # 硬件信息上报
-            res = http_post(rul="/host/agent/hardware/report", data={
+            res = http_post(url="/host/agent/hardware/report", data={
                 "name": "Updated Agent Config",
                 "dmr_config": request.result,
             })
             
             res_data = res.get('data', {})
+
+            # 启动WebSocket服务
+            try:
+                from ..websocket.global_websocket_manager import get_websocket_manager
+                manager = await get_websocket_manager()
+                if await manager.start():
+                    logger.info("WebSocket服务启动成功")
+                else:
+                    logger.warning("WebSocket服务启动失败")
+            except Exception as e:
+                logger.error(f"启动WebSocket服务时出错: {e}")
+
             return CommonResponse(
                 code=res_data.get('code'),
                 msg=res_data.get('message')
@@ -92,7 +104,7 @@ async def report_tool_result(request: EKResultRequest):
         )
         
     except Exception as e:
-        logger.error(f"处理EK结果汇报时发生错误: {str(e)}")
+        logger.error(f"处理结果汇报时发生错误: {str(e)}")
         return CommonResponse(
             code=1,
             msg=f"处理失败: {str(e)}"

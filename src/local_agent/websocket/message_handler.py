@@ -35,7 +35,10 @@ class WebSocketMessageHandler:
         
         # 注册ping消息处理器
         self._register_ping_handler()
-        
+
+        # 服务端超时未得到心跳的处理
+        self._register_timeout_handler()
+
         # 状态更新确认
         self._register_status_update_handler()
 
@@ -47,8 +50,6 @@ class WebSocketMessageHandler:
         
         # 注册自更新相关处理器
         self._register_update_handlers()
-        
-        self.logger.info(f"已注册 {message_manager.get_handler_count()} 个消息处理器")
     
     def _register_ping_handler(self):
         """注册ping消息处理器"""
@@ -58,10 +59,10 @@ class WebSocketMessageHandler:
             self.logger.debug("收到ping消息，发送pong响应")
     
 
-    def _register_ping_handler(self):
+    def _register_timeout_handler(self):
         """服务器告知心跳超时"""
         @message_manager.register_handler("heartbeat_timeout_warning", "心跳超时")
-        async def handle_ping(message: Dict[str, Any]):
+        async def handle_timeout(message: Dict[str, Any]):
             self.logger.debug("服务器未接收到心跳信息，立即发送一条")
             await send_message({
                 "type": "heartbeat",
@@ -198,4 +199,9 @@ def register_websocket_handlers(application):
     """
     handler = get_message_handler(application)
     if handler:
+        # 检查是否已经注册过处理器，避免重复注册
+        current_count = message_manager.get_handler_count()
+        if current_count > 0:
+            handler.logger.info(f"检测到已有 {current_count} 个消息处理器，跳过重复注册")
+            return
         handler.register_all_handlers()
