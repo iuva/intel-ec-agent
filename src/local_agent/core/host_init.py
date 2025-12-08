@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+import time
 import winreg
 import getpass
 import socket 
@@ -9,7 +10,7 @@ from typing import Optional  # 添加Optional导入
 from ..config import get_config
 from ..logger import get_logger
 from ..core.global_cache import cache
-from .constants import LOCAL_INFO_CACHE_KEY
+from .constants import LOCAL_INFO_CACHE_KEY, HARDWARE_INFO_TASK_ID
 from .auth import auth_token
 from local_agent.core.ek import EK
 from local_agent.core.dmr import DMR
@@ -18,8 +19,9 @@ from local_agent.utils.http_client import http_get, http_client
 from local_agent.utils.environment import Environment
 # 延迟导入以避免循环依赖
 # from local_agent.utils.whl_updater import update_from_whl_sync
-from ..ui.message_box import show_message_box
+from ..ui.message_proxy import show_message_box
 from ..utils.python_utils import PythonUtils  # 导入PythonUtils类
+from ..utils.timer_utils import set_timeout
 
 
 @dataclass
@@ -45,6 +47,7 @@ class HostInit:
         self.logger = get_logger(__name__)
         self.logger.info("主机初始化开始")
 
+
         # python 初始化
         PythonUtils.get_python_check()
 
@@ -62,16 +65,25 @@ class HostInit:
         cache.set(LOCAL_INFO_CACHE_KEY, local_info)
 
         # 版本核验，仅exe 运行时检查
-        if not Environment.is_development():
-            self.check_versions()
+        # if not Environment.is_development():
+        self.check_versions()
 
-        # TODO 获取硬件信息, 如果15分钟还没有收到硬件信息，则自动重新调用
-
-        # dmrRes = DMR.get_hardware_info()
-        # if dmrRes is not None:
-        #     self.logger.info(f"dmr-config sut 输出: {dmrRes}")
+        # 获取硬件信息
+        # self.get_hardware_info()
 
 
+    def get_hardware_info(self):
+        """
+        获取硬件信息, 如果15分钟还没有收到硬件信息，则自动重新调用
+        """
+        self.logger.info("获取硬件信息")
+        DMR.get_hardware_info()
+        # 添加定时任务，15分钟后再次执行
+        task_id = set_timeout(60, self.get_hardware_info)
+        # 缓存定时任务id
+        cache.set(HARDWARE_INFO_TASK_ID, task_id)
+
+        
 
     def check_versions(self):
         """
@@ -85,19 +97,23 @@ class HostInit:
         # 从服务端查取最新版本信息
         versionInfo = None
 
-        # 服务端获取版本失败，可无限重试
+
         while True:
             try:
                 res = http_get(url="/host/agent/ota/latest")
 
                 res_data = res.get('data', {})
                 code = res_data.get('code', 0)
+
+                self.logger.info(f"版本信息获取结果：{res_data}")
                 if code != 200:
+
                     result = show_message_box(
-                        msg="从服务器获取最新可用版本失败，请检查网络环境后重试！",
+                        msg=f"从服务器获取最新可用版本失败，请检查网络环境后点击“确认”重试！",
                         title="Python环境初始化失败",
-                        show_cancel=False
+                        buttons=["确认"]
                     )
+
 
                     self.logger.info("用户选择重试，重新获取版本信息")
                     continue
@@ -108,10 +124,11 @@ class HostInit:
                     break
             
             except Exception as e:
+                self.logger.error(f"获取版本信息发送异常: {e}")
                 result = show_message_box(
-                    msg="从服务器获取最新可用版本失败，请检查网络环境后重试！",
+                    msg=f"从服务器获取最新可用版本失败，请检查网络环境后点击“确认”重试！",
                     title="Python环境初始化失败",
-                    show_cancel=False
+                    buttons=["确认"]
                 )
 
                 self.logger.info("用户选择重试，重新获取版本信息")

@@ -14,6 +14,9 @@ PYTHON_CACHE_KEY = "python_path"
 # agent 更新失败的时间
 AGENT_UPDATE_FAILED_TIME = "agent_update_failed_time"
 
+# 硬件信息获取定时任务id
+HARDWARE_INFO_TASK_ID = "hardware_info_task_id"
+
 
 
 

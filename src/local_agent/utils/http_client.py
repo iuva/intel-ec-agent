@@ -237,7 +237,10 @@ class HttpClient:
                 return {
                     'status_code': 401,
                     'success': False,
-                    'data': {'error': '鉴权失败，无法获取有效token'},
+                    'data': {
+                        'error': '鉴权失败，无法获取有效token',
+                        'code': 401
+                    },
                     'url': url
                 }
         

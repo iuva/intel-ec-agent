@@ -13,7 +13,7 @@ from ..logger import get_logger
 from .message_manager import message_manager
 from .message_sender import send_message
 from ..utils.subprocess_utils import run_with_logging_safe
-from ..ui.message_box import show_message_box
+from ..ui.message_proxy import show_message_box
 
 
 class WebSocketMessageHandler:

@@ -188,6 +188,14 @@ def build_exe():
         '--hidden-import=local_agent.core',
         '--hidden-import=local_agent.websocket',
         '--hidden-import=local_agent.keep_alive',  # 新增保活模块
+        '--hidden-import=local_agent.ui',  # 新增UI模块
+        '--hidden-import=local_agent.ui.message_box',  # 新增消息框模块
+        '--hidden-import=local_agent.ui.message_proxy',  # 新增消息框代理模块
+        '--hidden-import=local_agent.ui.gui_message_handler',  # 新增GUI消息处理器模块
+        '--hidden-import=local_agent.ui.message_pipe_client',  # 新增管道客户端模块
+        '--additional-hooks-dir=hooks',  # 添加自定义hook目录
+        '--hidden-import=tkinter',  # 关键：添加Tkinter支持
+        '--hidden-import=_tkinter',  # 关键：添加Tkinter底层支持
         '--hidden-import=fastapi',
         '--hidden-import=uvicorn',
         '--hidden-import=websockets',

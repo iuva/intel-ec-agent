@@ -2,12 +2,23 @@
 消息确认窗口组件
 提供带有"重试"和"放弃"按钮的确认对话框
 支持自定义按钮显示状态和文本描述
+智能检测运行环境，自动选择服务消息框或普通消息框
 """
 
 import tkinter as tk
 from tkinter import ttk
 from typing import Optional, Callable
 import threading
+import os
+import logging
+
+# 尝试导入服务消息框
+try:
+    from .service_message_box import show_service_message_box, ServiceMessageBox
+    SERVICE_MESSAGE_BOX_AVAILABLE = True
+except ImportError:
+    SERVICE_MESSAGE_BOX_AVAILABLE = False
+    logging.warning("服务消息框组件不可用，将使用普通消息框")
 
 
 class MessageBox:
@@ -192,25 +203,89 @@ class MessageBox:
         return self.result
 
 
+def _is_service_mode() -> bool:
+    """检测是否运行在服务模式下"""
+    # 检查环境变量
+    service_mode_env = os.environ.get('LOCAL_AGENT_SERVICE_MODE', '').lower()
+    if service_mode_env in ('true', '1', 'yes'):
+        return True
+    
+    # 检查当前会话ID（会话0通常是服务会话）
+    try:
+        import ctypes
+        from ctypes import wintypes
+        
+        # 获取当前进程的会话ID
+        process_id = ctypes.windll.kernel32.GetCurrentProcessId()
+        session_id = wintypes.DWORD()
+        
+        if ctypes.windll.kernel32.ProcessIdToSessionId(process_id, ctypes.byref(session_id)):
+            return session_id.value == 0  # 会话0是系统服务会话
+    except Exception:
+        pass
+    
+    return False
+
+
 def show_message_box(msg: str, title: str = "确认",
-                      show_retry: bool = True, show_cancel: bool = True,
-                      retry_text: str = "重试", cancel_text: str = "放弃") -> str:
+                      buttons: list = None, default_button: int = 0) -> int:
     """
-    快速显示消息确认窗口的便捷函数
+    智能消息框：根据运行环境自动选择服务消息框或普通消息框
     
     Args:
         msg: 消息内容
         title: 窗口标题
-        show_retry: 是否显示重试按钮
-        show_cancel: 是否显示放弃按钮
-        retry_text: 重试按钮显示文本
-        cancel_text: 放弃按钮显示文本
+        buttons: 按钮列表，如["确定", "取消"]
+        default_button: 默认按钮索引
         
     Returns:
-        str: 用户选择的按钮类型('retry'或'cancel')
+        int: 用户选择的按钮索引
     """
-    message_box = MessageBox(title, show_retry, show_cancel, retry_text, cancel_text)
-    return message_box.show(msg)
+    if buttons is None:
+        buttons = ["确定"]
+    
+    # 检测是否运行在服务模式下
+    if _is_service_mode() and SERVICE_MESSAGE_BOX_AVAILABLE:
+        # 使用服务消息框
+        logging.info("检测到服务模式，使用服务消息框")
+        
+        # 显示服务消息框
+        result = show_service_message_box(
+            title=title,
+            message=msg,
+            message_type="info",
+            buttons=buttons,
+            timeout=0  # 无限等待
+        )
+        
+        # 转换结果为按钮索引
+        if result in buttons:
+            return buttons.index(result)
+        else:
+            logging.warning(f"未知的服务消息框结果: {result}，默认返回{default_button}")
+            return default_button
+    else:
+        # 使用普通消息框
+        logging.info("使用普通消息框")
+        
+        # 将按钮列表转换为show_retry/show_cancel参数（向后兼容）
+        show_retry = len(buttons) > 1  # 多个按钮时显示重试
+        show_cancel = len(buttons) > 1  # 多个按钮时显示取消
+        
+        # 获取按钮文本
+        retry_text = buttons[0] if len(buttons) > 0 else "重试"
+        cancel_text = buttons[1] if len(buttons) > 1 else "放弃"
+        
+        message_box = MessageBox(title, show_retry, show_cancel, retry_text, cancel_text)
+        
+        # 转换结果为按钮索引
+        result = message_box.show(msg)
+        if result == "retry":
+            return 0  # 第一个按钮
+        elif result == "cancel":
+            return 1  # 第二个按钮
+        else:
+            return default_button
 
 
 def show_message_box_async(msg: str, callback: Callable, title: str = "确认",
