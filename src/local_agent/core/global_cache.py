@@ -22,7 +22,7 @@ import time
 import threading
 from typing import Any, Dict, Optional, Union
 from collections import OrderedDict
-
+from .constants import DMR_INFO_CACHE_KEY, HARDWARE_INFO_UPLOAD_TASK_ID, AGENT_STATUS_CACHE_KEY, EK_TEST_INFO_CACHE_KEY
 
 class GlobalCache:
     """
@@ -315,3 +315,53 @@ def get_cache_keys() -> list:
 def get_cache_size() -> int:
     """便捷函数：获取缓存大小"""
     return cache.size()
+
+def get_dmr_info() -> Dict[str, Any]:
+    """便捷函数：获取 dmr 硬件信息"""
+    return cache.get(DMR_INFO_CACHE_KEY, {})
+
+def set_dmr_info(info: Dict[str, Any]) -> None:
+    """便捷函数：设置 dmr 硬件信息"""
+    cache.set(DMR_INFO_CACHE_KEY, info)
+
+def get_dmr_upload_task_id() -> Optional[str]:
+    """便捷函数：获取硬件信息上报定时任务id"""
+    return cache.get(HARDWARE_INFO_UPLOAD_TASK_ID, None)
+
+def set_dmr_upload_task_id(task_id: str) -> None:
+    """便捷函数：设置硬件信息上报定时任务id"""
+    cache.set(HARDWARE_INFO_UPLOAD_TASK_ID, task_id)
+
+def get_agent_status_by_key(key: str) -> bool:
+    """便捷函数：获取 agent 状态"""
+    return cache.get(AGENT_STATUS_CACHE_KEY, {"test": False, "vnc": False, "sut": False, "use": False, "pre": False}).get(key, False)
+
+def get_agent_status() -> Dict[str, bool]:
+    """便捷函数：获取 agent 状态"""
+    return cache.get(AGENT_STATUS_CACHE_KEY, {"test": False, "vnc": False, "sut": False, "use": False, "pre": False})
+
+def set_agent_status(test: bool = None, vnc: bool = None, sut: bool = None, use: bool = None, pre: bool = None) -> None:
+    """便捷函数：设置 agent 状态"""
+    status = get_agent_status()
+    if test is not None:
+        status["test"] = test
+    if vnc is not None:
+        status["vnc"] = vnc
+    if sut is not None:
+        status["sut"] = sut
+    if use is not None:
+        status["use"] = use
+    if pre is not None:
+        status["pre"] = pre
+    cache.set(AGENT_STATUS_CACHE_KEY, status)
+
+def get_ek_test_info() -> Dict[str, Any]:
+    """便捷函数：获取 ek 测试信息"""
+    return cache.get(EK_TEST_INFO_CACHE_KEY, {})
+
+def set_ek_test_info(info: Dict[str, Any]) -> None:
+    """便捷函数：设置 ek 测试信息"""
+    cache.set(EK_TEST_INFO_CACHE_KEY, info)
+
+
+

@@ -40,7 +40,7 @@ class Config:
             
             # WebSocket配置
             'websocket_enabled': True,
-            'websocket_url': 'ws://192.168.101.42:8000/api/v1/ws/host/host',
+            'websocket_url': 'ws://10.239.168.44:8000/api/v1/ws/host/host',
             'websocket_reconnect_interval': 10,  # 重连间隔(秒)
             'websocket_timeout': 30,  # 超时时间(秒)
             
@@ -61,7 +61,7 @@ class Config:
             'monitor_interval': 30,  # 监控间隔(秒)
             
             # HTTP客户端配置
-            'http_base_url': 'http://192.168.101.42:800/api/v1',  # HTTP请求基础URL
+            'http_base_url': 'http://10.239.168.44:8000/api/v1',  # HTTP请求基础URL
             'http_timeout': 60,  # HTTP请求超时时间(秒)
         })
     

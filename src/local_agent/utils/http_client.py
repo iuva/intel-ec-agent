@@ -64,6 +64,10 @@ class HttpClient:
         Returns:
             str: 完整下载URL
         """
+        # 处理空URL
+        if not url:
+            return None
+
         # 如果已经是完整URL，直接返回
         if url.startswith(('http://', 'https://')):
             return url
@@ -316,12 +320,50 @@ class HttpClient:
             
         except requests.exceptions.Timeout:
             self.logger.error(f"{method}请求超时: {full_url}")
-            return {
-                'status_code': 408,
-                'success': False,
-                'data': {'error': '请求超时'},
-                'url': full_url
-            }
+            
+            # 无限重试逻辑：超时后等待2分钟再次请求
+            import time
+            retry_delay = 120  # 2分钟
+            
+            while True:
+                self.logger.warning(f"请求超时，等待{retry_delay}秒后重试: {full_url}")
+                time.sleep(retry_delay)
+                
+                try:
+                    self.logger.info(f"开始重试请求: {full_url}")
+                    
+                    response = self.session.request(method, full_url, **request_kwargs)
+                    
+                    # 处理响应
+                    result = self._handle_response(response, method, full_url)
+                    
+                    # 如果请求成功，返回结果
+                    if result['success']:
+                        self.logger.info(f"重试请求成功: {full_url}")
+                        return result
+                    
+                    # 如果请求失败但不是超时，返回错误
+                    if result.get('status_code') != 408:
+                        self.logger.warning(f"重试请求失败（非超时错误）: {full_url}")
+                        return result
+                    
+                    # 如果是超时错误，继续重试循环
+                    self.logger.error(f"重试请求仍然超时: {full_url}")
+                    
+                except requests.exceptions.Timeout:
+                    # 重试时仍然超时，继续循环
+                    self.logger.error(f"重试请求超时: {full_url}")
+                    continue
+                    
+                except Exception as e:
+                    # 其他异常，返回错误
+                    self.logger.error(f"重试请求异常: {full_url}, 错误: {e}")
+                    return {
+                        'status_code': 500,
+                        'success': False,
+                        'data': {'error': f'重试请求异常: {str(e)}'},
+                        'url': full_url
+                    }
             
         except requests.exceptions.ConnectionError:
             self.logger.error(f"{method}连接错误: {full_url}")

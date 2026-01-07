@@ -1,27 +1,27 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-import time
 import winreg
-import getpass
 import socket 
 from dataclasses import dataclass
-from typing import Optional  # 添加Optional导入
 
 from ..config import get_config
 from ..logger import get_logger
-from ..core.global_cache import cache
+from ..core.global_cache import cache, set_agent_status, get_agent_status_by_key
 from .constants import LOCAL_INFO_CACHE_KEY, HARDWARE_INFO_TASK_ID
-from .auth import auth_token
 from local_agent.core.ek import EK
 from local_agent.core.dmr import DMR
-from ..utils.version_utils import get_app_version, get_version_info, is_newer_version
+from ..utils.version_utils import get_app_version, is_newer_version
 from local_agent.utils.http_client import http_get, http_client
-from local_agent.utils.environment import Environment
+from ..utils.environment import Environment
+
 # 延迟导入以避免循环依赖
 # from local_agent.utils.whl_updater import update_from_whl_sync
-from ..ui.message_proxy import show_message_box
+from ..utils.message_tool import show_message_box
 from ..utils.python_utils import PythonUtils  # 导入PythonUtils类
 from ..utils.timer_utils import set_timeout
+from ..utils.time_utils import TimeUtils
+from .vnc import VNC
+from local_agent.core.app_update import report_version
 
 
 @dataclass
@@ -47,6 +47,8 @@ class HostInit:
         self.logger = get_logger(__name__)
         self.logger.info("主机初始化开始")
 
+        # 尝试启动 VNC 服务
+        VNC.start_vncserver()
 
         # python 初始化
         PythonUtils.get_python_check()
@@ -65,11 +67,14 @@ class HostInit:
         cache.set(LOCAL_INFO_CACHE_KEY, local_info)
 
         # 版本核验，仅exe 运行时检查
-        # if not Environment.is_development():
-        self.check_versions()
+        if not Environment.is_development():
+            self.check_versions()
 
-        # 获取硬件信息
-        # self.get_hardware_info()
+        # 定时获取硬件信息
+        # self.timing_hardware_info(start=True)11
+        
+        from ..utils.websocket_sync_utils import start_websocket_sync
+        start_websocket_sync(True)
 
 
     def get_hardware_info(self):
@@ -77,13 +82,37 @@ class HostInit:
         获取硬件信息, 如果15分钟还没有收到硬件信息，则自动重新调用
         """
         self.logger.info("获取硬件信息")
+        
+        # 如果不在测试中，优先停止websocket，保证不在获取硬件信息过程中执行测试
+        if not get_agent_status_by_key('test'):
+            from ..utils.websocket_sync_utils import stop_websocket_sync
+            stop_websocket_sync()
+            
+
+        set_agent_status(sut=True)
         DMR.get_hardware_info()
+        self.logger.info("获取硬件信息-调用结束")
         # 添加定时任务，15分钟后再次执行
-        task_id = set_timeout(60, self.get_hardware_info)
+        task_id = set_timeout(900, self.get_hardware_info)
         # 缓存定时任务id
         cache.set(HARDWARE_INFO_TASK_ID, task_id)
 
-        
+
+    def timing_hardware_info(self, start=False):
+        """
+        定时获取硬件信息
+        """
+
+        # 获取硬件信息
+        self.get_hardware_info()
+
+        # 每天0点再次执行
+        set_timeout(TimeUtils.get_seconds_to_next_target("00:00:00"), self.timing_hardware_info)
+
+        # 非启动时调用，检查版本
+        if not start:
+            self.check_versions()
+
 
     def check_versions(self):
         """
@@ -109,9 +138,9 @@ class HostInit:
                 if code != 200:
 
                     result = show_message_box(
-                        msg=f"从服务器获取最新可用版本失败，请检查网络环境后点击“确认”重试！",
-                        title="Python环境初始化失败",
-                        buttons=["确认"]
+                        msg=f"从服务器获取最新可用版本失败！",
+                        title="网络异常",
+                        confirm_text="重试"
                     )
 
 
@@ -126,9 +155,9 @@ class HostInit:
             except Exception as e:
                 self.logger.error(f"获取版本信息发送异常: {e}")
                 result = show_message_box(
-                    msg=f"从服务器获取最新可用版本失败，请检查网络环境后点击“确认”重试！",
-                    title="Python环境初始化失败",
-                    buttons=["确认"]
+                    msg=f"从服务器获取最新可用版本失败！",
+                    title="网络异常",
+                    confirm_text="重试"
                 )
 
                 self.logger.info("用户选择重试，重新获取版本信息")
@@ -151,6 +180,7 @@ class HostInit:
             
             if last_update_failure_time > 0:
                 self.logger.info(f"上次更新失败时间: {time.ctime(last_update_failure_time)}")
+                report_version('agent', agentVersion.get('conf_ver'), 3)
 
             # 计算时间差（秒）
             current_time = time.time()
@@ -159,10 +189,12 @@ class HostInit:
             # 如果10分钟内有更新失败记录，则不进行更新
             if last_update_failure_time == 0 or time_diff > 600:
                 # 版本比对
-                agent_is_new = is_newer_version(agentVersion.get('conf_ver'), current_version)
+                agent_new_ver = agentVersion.get('conf_ver')
+                agent_is_new = is_newer_version(agent_new_ver, current_version)
 
                 if agent_is_new:
                     self.logger.info('agent 需要更新')
+                    report_version('agent', agent_new_ver, 1)
                     
                     try:
                         # 延迟导入以避免循环依赖
@@ -170,8 +202,7 @@ class HostInit:
                         updater = AutoUpdater()
                         # 异步执行更新操作
                         result = updater.perform_update_sync(
-                            'dc74e9c67a8bb6561cfb3efb9fdb55f3',
-                            # expected_md5=agentVersion.get('conf_md5'),
+                            expected_md5=agentVersion.get('conf_md5'),
                             download_url=agentVersion.get('conf_url')
                         )
 
@@ -185,6 +216,7 @@ class HostInit:
                             set_persistent_data('last_update_failure_time', current_time, 'update_status')
                             set_persistent_data('last_update_error', error_message, 'update_status')
                             self.logger.info(f"已记录更新失败时间: {current_time}")
+                            report_version('agent', agent_new_ver, 3)
                         
                     except Exception as e:
                         self.logger.error(f"更新操作异常: {e}")
@@ -192,47 +224,51 @@ class HostInit:
                         set_persistent_data('last_update_failure_time', current_time, 'update_status')
                         set_persistent_data('last_update_error', str(e), 'update_status')
                         self.logger.info(f"已记录更新异常时间: {current_time}")
-
+                        report_version('agent', agent_new_ver, 3)
+                else:
+                    report_version('agent', current_version, 2)
 
         # ek 是否需要更新
         ekVersion = versionInfo.get('ek')
+        EK.env_check()
         if ekVersion:
-            ek_is_new = is_newer_version(ekVersion.get('conf_ver'), EK.version())
+            ek_new_version = ekVersion.get('conf_ver')
+            ek_is_new = is_newer_version(ek_new_version, EK.version())
             if ek_is_new:
                 self.logger.info('Execution Kit 需要更新')
-                update_url = http_client._build_file_url(ekVersion.get('conf_url'))
-                # 延迟导入以避免循环依赖
-                from local_agent.utils.whl_updater import update_from_whl_sync
-                resunt = update_from_whl_sync(update_url)
-                if resunt.get('success', False):
-                    self.logger.info('Execution Kit 更新成功')
+                report_version('ek', ek_new_version, 1)
+                EK.update(ekVersion.get('conf_url', None))
+
+                # 采用重新获取版本进行比对的方式进行判断是否更新成功
+                res = is_newer_version(ek_new_version, EK.version())
+
+                if res:
+                    report_version('ek', ek_new_version, 3)
                 else:
-                    self.logger.error(f'Execution Kit 更新失败: {resunt.get("error", "未知错误")}')
+                    report_version('ek', ek_new_version, 2)
+                    
         else:
             self.logger.warning('无法获取Execution Kit版本信息')
 
         # dmr 是否需要更新
         dmrVersion = versionInfo.get('dmr_config')
         if dmrVersion:
-            dmr_is_new = is_newer_version(dmrVersion.get('conf_ver'), DMR.version())
+            dmr_new_version = dmrVersion.get('conf_ver')
+            dmr_is_new = is_newer_version(dmr_new_version, DMR.version())
             if dmr_is_new:
                 self.logger.info('dmr_config 需要更新')
-                update_url = http_client._build_file_url(dmrVersion.get('conf_url'))
-                # 延迟导入以避免循环依赖
-                from local_agent.utils.whl_updater import update_from_whl_sync
-                resunt = update_from_whl_sync(update_url)
-                if resunt.get('success', False):
-                    self.logger.info('dmr_config 更新成功')
+                report_version('dmr_config', dmr_new_version, 1)
+                DMR.update(dmrVersion.get('conf_url', None))
+                # 采用重新获取版本进行比对的方式进行判断是否更新成功
+                res = is_newer_version(dmr_new_version, DMR.version())
+
+                if res:
+                    report_version('dmr_config', dmr_new_version, 3)
                 else:
-                    self.logger.error(f'dmr_config 更新失败: {resunt.get("error", "未知错误")}')
+                    report_version('dmr_config', dmr_new_version, 2)
         else:
             self.logger.warning('无法获取dmr_config版本信息')
 
-
-
-
-
-    
 
     """
     获取主机环境 - Windows兼容版本
@@ -263,24 +299,16 @@ class HostInit:
             # 方法1：检查是否以服务模式运行
             import os
             import sys
+            import getpass
+            import requests
             
             # 检查环境变量和命令行参数判断服务模式
-            service_env = os.environ.get('LOCAL_AGENT_SERVICE_MODE', '')
-            cmdline = ' '.join(sys.argv).lower()
-            service_flags = ['--service', '-s', '/service']
-            
-            is_service_mode = service_env == 'true' or any(flag in cmdline for flag in service_flags)
-            
-            if is_service_mode:
-                # 服务模式下使用固定的用户名，避免冲突
-                # 使用计算机名作为统一标识
-                import socket
-                computer_name = socket.gethostname()
-                return f"{computer_name}$"  # 添加$符号表示系统账户
-            else:
-                # 非服务模式下使用当前登录用户名
-                import getpass
-                return getpass.getuser()
+            user_domain = os.environ.get('USERDOMAIN')
+            response = requests.get(f"http://127.0.0.1:8001/username", timeout=10)
+            user_name = response.text.strip().replace('"', '')
+
+            return f"{user_domain.lower()}\{user_name}"
+
                 
         except Exception as e:
             self.logger.error(f"统一用户名识别失败: {e}")

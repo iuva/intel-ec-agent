@@ -1,19 +1,17 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-本地代理应用主入口 - 增强版
-支持自动服务注册和保活机制
+本地代理应用主入口 - 双进程HTTP消息框版本
+支持双进程机制：A进程（用户启动）和B进程（系统服务）
 """
 
 import asyncio
 import sys
 import os
-import subprocess
-import time
 import psutil
-import shutil
 import ctypes
 import platform
+import threading
 from pathlib import Path
 
 # 导入增强的子进程工具
@@ -24,10 +22,13 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from local_agent.core.application import run_application
 from local_agent.logger import get_logger, setup_global_logging, redirect_all_output
-
+from local_agent.ui.message_api import run_message_api_service
+from local_agent.ui.system_tray import start_system_tray
+from local_agent.core.ek import EK
 
 # 导入文件工具类
 from local_agent.utils.file_utils import FileUtils
+
 
 def extract_of_scripts(file_name: str, overwrite: bool = False):
     """从scripts 目录解压文件到当前目录（如果需要）
@@ -177,9 +178,9 @@ def install_service_via_nssm():
             return False, f"服务安装失败: {result.stderr}"
         
         # 配置服务参数
-        run_with_logging([nssm_path, 'set', service_name, 'Description', '本地代理服务 - 自动保活'], 
+        run_with_logging([nssm_path, 'set', service_name, 'Description', 'agent - 自动保活'], 
                         command_name="nssm_set_description", timeout=10)
-        run_with_logging([nssm_path, 'set', service_name, 'DisplayName', '本地代理服务'], 
+        run_with_logging([nssm_path, 'set', service_name, 'DisplayName', 'agent'], 
                         command_name="nssm_set_displayname", timeout=10)
         run_with_logging([nssm_path, 'set', service_name, 'Start', 'SERVICE_AUTO_START'], 
                         command_name="nssm_set_startup", timeout=10)
@@ -391,16 +392,113 @@ def hide_console_window():
             pass
     return False
 
-def main():
-    """主函数 - 增强版"""
+
+def run_a_process():
+    """运行A进程（用户启动的进程）"""
+    logger = get_logger(__name__)
+    logger.info("[INFO] 启动A进程（用户进程）...")
     
-    # 解析命令行参数（先解析参数，避免影响多进程检测）
+    # 启动系统托盘
+    tray = start_system_tray("agent")
+    
+    # 启动FastAPI服务
+    async def run_api():
+        await run_message_api_service(port=8001)
+    
+    # 在主事件循环中启动FastAPI服务
+    import asyncio
+    
+    # 创建新的事件循环用于FastAPI服务
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    
+    # 在后台线程中运行FastAPI服务
+    def start_fastapi():
+        try:
+            loop.run_until_complete(run_api())
+        except Exception as e:
+            logger.error(f"[ERROR] FastAPI服务启动失败: {e}")
+    
+    api_thread = threading.Thread(target=start_fastapi, daemon=True)
+    api_thread.start()
+    
+    # 等待FastAPI服务启动
+    import socket
+    import time
+    max_retries = 30
+    for i in range(max_retries):
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(1)
+            result = sock.connect_ex(('127.0.0.1', 8001))
+            sock.close()
+            
+            if result == 0:
+                logger.info("[INFO] FastAPI服务启动成功，端口8001已就绪")
+                break
+            else:
+                if i == max_retries - 1:
+                    logger.error("[ERROR] FastAPI服务启动失败，端口8001未就绪")
+                else:
+                    time.sleep(0.5)
+        except Exception as e:
+            logger.warning(f"[WARN] 端口检测失败: {e}")
+            time.sleep(0.5)
+    
+    logger.info("[INFO] A进程启动完成：系统托盘和FastAPI服务已启动")
+    logger.info("[INFO] 消息框API服务地址: http://127.0.0.1:8001")
+    logger.info("[INFO] A进程将在后台运行，为系统服务提供消息框支持")
+    
+    # 保持进程运行，但隐藏控制台窗口
+    try:
+        # 非调试模式下隐藏控制台窗口
+        if not any('debug' in arg.lower() for arg in sys.argv) and platform.system() == "Windows":
+            hide_console_window()
+            logger.info("[INFO] 控制台窗口已隐藏")
+        
+        # 保持进程运行
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        logger.info("[INFO] A进程收到中断信号，正在退出...")
+    except Exception as e:
+        logger.error(f"[ERROR] A进程运行异常: {e}")
+
+
+def run_b_process():
+    """运行B进程（系统服务进程）"""
+    logger = get_logger(__name__)
+    logger.info("[INFO] 启动B进程（系统服务进程）...")
+    
+    # 运行应用主逻辑
+    try:
+        # 检测是否为调试模式
+        debug_mode = False
+        if len(sys.argv) > 1 and sys.argv[1].lower() == 'debug':
+            debug_mode = True
+        
+        logger.info(f"[INFO] 启动应用核心功能... (debug模式: {debug_mode})")
+        asyncio.run(run_application(debug=debug_mode))
+        
+        logger.info("[INFO] B进程已正常退出")
+        
+    except KeyboardInterrupt:
+        logger.info("[INFO] B进程收到中断信号，正在退出...")
+    except Exception as e:
+        logger.error(f"[ERROR] B进程运行异常: {e}")
+        sys.exit(1)
+
+
+def main():
+    """主函数 - 双进程版本"""
+    
+    # 解析命令行参数
     import argparse
-    parser = argparse.ArgumentParser(description='本地代理应用')
+    parser = argparse.ArgumentParser(description='agent')
     parser.add_argument('mode', nargs='?', default='normal', help='运行模式: normal 或 debug')
     args = parser.parse_args()
     
-    # 确定是否为debug模式（安全处理None值）
+    # 确定是否为debug模式
     debug_mode = False
     if args.mode and hasattr(args.mode, 'lower'):
         debug_mode = args.mode.lower() == 'debug'
@@ -418,39 +516,35 @@ def main():
         else:
             logger.info("[INFO] 控制台窗口隐藏失败，继续运行")
     
-    # 多进程检测和修复 - 防止重复启动（在日志初始化后执行）
+    # 多进程检测和修复 - 防止重复启动
     try:
         current_pid = os.getpid()
         existing_processes = []
         
-        # 记录当前进程的启动时间（用于排除新启动的进程）
-        # 添加时间容差，解决精度问题
+        # 记录当前进程的启动时间
         current_process_start_time = psutil.Process(current_pid).create_time()
-        # 添加1秒的容差，避免时间精度问题导致的误判
         current_process_start_time_with_tolerance = current_process_start_time - 1.0
         
-        # 第一次检测：立即检测
+        # 检测其他local_agent进程
         for proc in psutil.process_iter(["pid", "name", "exe", "cmdline", "ppid", "create_time"]):
             try:
-                # 安全获取进程信息，处理None值
                 proc_info = proc.info
                 proc_pid = proc_info.get("pid")
                 proc_name = proc_info.get("name", "") or ""
                 proc_exe = proc_info.get("exe", "") or ""
                 proc_cmdline = proc_info.get("cmdline", []) or []
-                proc_ppid = proc_info.get("ppid")  # 父进程ID
-                proc_create_time = proc_info.get("create_time")  # 进程启动时间
+                proc_ppid = proc_info.get("ppid")
+                proc_create_time = proc_info.get("create_time")
                 
                 # 跳过当前进程
                 if proc_pid == current_pid:
                     continue
                 
-                # 跳过当前进程的子进程（避免误判）
+                # 跳过当前进程的子进程
                 if proc_ppid == current_pid:
                     continue
                 
-                # 跳过在当前进程之后启动的进程（可能是子进程或相关进程）
-                # 使用容差时间，避免时间精度问题
+                # 跳过在当前进程之后启动的进程
                 if proc_create_time and proc_create_time > current_process_start_time_with_tolerance:
                     continue
                 
@@ -458,56 +552,22 @@ def main():
                 if proc_pid == os.getppid():
                     continue
                 
-                # 特殊处理：跳过由当前进程启动的EXE进程
-                # 当Python脚本启动EXE时，EXE进程的父进程是当前进程的父进程
-                # 需要检查进程启动时间和命令行参数来识别这种关系
-                if (proc_ppid == os.getppid() and 
-                    proc_create_time and proc_create_time >= current_process_start_time and
-                    proc_cmdline and any("local_agent" in str(arg) for arg in proc_cmdline)):
-                    continue
-                
-                # 确保字符串类型，避免NoneType错误
-                proc_name = str(proc_name).lower() if proc_name else ""
-                proc_exe = str(proc_exe).lower() if proc_exe else ""
-                
-                # 更精确的匹配逻辑：检查进程名称、可执行文件路径和命令行参数
+                # 检查是否为local_agent进程
                 is_local_agent_process = False
                 
-                # 检查进程名称（精确匹配）
                 if proc_name and "local_agent" in proc_name:
-                    # 进一步验证：确保不是其他包含"local_agent"字符串的进程
-                    if "local_agent" in proc_name and not any(exclude in proc_name for exclude in ['python', 'editor', 'ide']):
-                        is_local_agent_process = True
-                
-                # 检查可执行文件路径（精确匹配）
+                    is_local_agent_process = True
                 elif proc_exe and "local_agent" in proc_exe:
-                    # 进一步验证：确保是可执行文件路径，不是临时文件或缓存文件
-                    if proc_exe.endswith('.exe') and 'temp' not in proc_exe.lower() and 'cache' not in proc_exe.lower():
-                        is_local_agent_process = True
-                
-                # 检查命令行参数（最精确的匹配）
+                    is_local_agent_process = True
                 elif proc_cmdline:
                     cmdline_str = ' '.join(str(arg) for arg in proc_cmdline).lower()
-                    
-                    # 精确匹配条件：
-                    # 1. 必须包含local_agent
-                    # 2. 不能包含python（避免误判Python解释器）
-                    # 3. 必须包含.exe（确保是可执行文件）
-                    # 4. 不能包含.log（避免误判日志查看器）
-                    # 5. 不能包含test、debug等开发相关关键词
-                    # 6. 检查是否在dist目录下运行（打包后的位置）
-                    # 7. 关键修复：必须包含完整的可执行文件路径，避免误判
                     if ("local_agent" in cmdline_str and 
                         not "python" in cmdline_str and 
                         ".exe" in cmdline_str and
                         not ".log" in cmdline_str and
-                        not any(exclude in cmdline_str for exclude in ['test', 'debug', 'dev', 'ide', 'editor']) and
-                        ('dist' in cmdline_str or 'local_agent.exe' in cmdline_str) and
-                        # 关键修复：确保是可执行文件路径，而不是其他包含local_agent的文件
                         any(arg.endswith('local_agent.exe') for arg in proc_cmdline if isinstance(arg, str))):
                         is_local_agent_process = True
                 
-                # 如果是local_agent进程
                 if is_local_agent_process:
                     existing_processes.append(proc_pid)
                         
@@ -522,129 +582,38 @@ def main():
             is_service_mode = check_if_service_mode()
             
             if is_service_mode:
-                logger.info("[INFO] 当前为服务模式，允许与其他进程共存")
-                logger.info("[INFO] 这是为了确保服务模式下的稳定运行")
+                logger.info("[INFO] 当前为服务模式（B进程），允许与A进程共存")
+                # B进程（服务模式）可以与A进程共存
             else:
-                # 关键优化：在非服务模式下，检查其他进程是否正在运行FastAPI服务
-                # 如果其他进程正在运行服务，则当前进程退出
-                # 如果其他进程没有运行服务，则当前进程继续运行
-                
+                # A进程（用户模式）需要检查FastAPI服务是否正在运行
                 try:
-                    # 检查其他进程是否正在运行FastAPI服务（端口8001）
                     import socket
-                    
-                    # 尝试连接FastAPI端口，如果连接成功说明服务正在运行
                     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                    sock.settimeout(2)  # 2秒超时
+                    sock.settimeout(2)
                     result = sock.connect_ex(('127.0.0.1', 8001))
                     sock.close()
                     
                     if result == 0:
-                        logger.info("[INFO] 检测到FastAPI服务正在运行，当前进程将退出")
-                        logger.info("[INFO] 这是为了避免端口冲突和资源竞争")
+                        logger.info("[INFO] 检测到FastAPI服务正在运行（已有A进程在运行），当前A进程将退出")
+                        logger.info("[INFO] 提示：系统服务（B进程）将自动启动，无需重复运行")
                         sys.exit(0)
                     else:
-                        logger.info("[INFO] FastAPI服务未运行，当前进程将继续启动服务")
+                        logger.info("[INFO] FastAPI服务未运行，当前A进程将继续启动服务")
                         
                 except Exception as e:
                     logger.warning(f"[WARN] 端口检测失败: {e}")
-                    logger.warning("[WARN] 为避免重复启动，当前进程将退出")
+                    logger.warning("[WARN] 为避免重复启动，当前A进程将退出")
                     sys.exit(0)
         
-        # 第二次检测：等待一段时间后再次检测（处理进程启动延迟）
-        time.sleep(2)
-        existing_processes_second = []
-        
-        for proc in psutil.process_iter(["pid", "name", "exe", "cmdline", "ppid", "create_time"]):
-            try:
-                # 安全获取进程信息，处理None值
-                proc_info = proc.info
-                proc_pid = proc_info.get("pid")
-                proc_name = proc_info.get("name", "") or ""
-                proc_exe = proc_info.get("exe", "") or ""
-                proc_cmdline = proc_info.get("cmdline", []) or []
-                proc_ppid = proc_info.get("ppid")  # 父进程ID
-                proc_create_time = proc_info.get("create_time")  # 进程启动时间
-                
-                # 跳过当前进程
-                if proc_pid == current_pid:
-                    continue
-                
-                # 跳过当前进程的子进程（避免误判）
-                if proc_ppid == current_pid:
-                    continue
-                
-                # 跳过在当前进程之后启动的进程（可能是子进程或相关进程）
-                # 使用容差时间，避免时间精度问题
-                if proc_create_time and proc_create_time > current_process_start_time_with_tolerance:
-                    continue
-                
-                # 跳过当前进程的父进程
-                if proc_pid == os.getppid():
-                    continue
-                
-                # 特殊处理：跳过由当前进程启动的EXE进程
-                # 当Python脚本启动EXE时，EXE进程的父进程是当前进程的父进程
-                # 需要检查进程启动时间和命令行参数来识别这种关系
-                if (proc_ppid == os.getppid() and 
-                    proc_create_time and proc_create_time >= current_process_start_time and
-                    proc_cmdline and any("local_agent" in str(arg) for arg in proc_cmdline)):
-                    continue
-                
-                # 确保字符串类型，避免NoneType错误
-                proc_name = str(proc_name).lower() if proc_name else ""
-                proc_exe = str(proc_exe).lower() if proc_exe else ""
-                
-                # 更精确的匹配逻辑
-                is_local_agent_process = False
-                
-                if proc_name and "local_agent" in proc_name:
-                    is_local_agent_process = True
-                elif proc_exe and "local_agent" in proc_exe:
-                    is_local_agent_process = True
-                elif proc_cmdline:
-                    cmdline_str = ' '.join(str(arg) for arg in proc_cmdline).lower()
-                    # 更精确的匹配：检查是否包含local_agent且不包含python（避免误判Python解释器进程）
-                    # 同时检查是否包含.exe扩展名，确保是编译后的可执行文件
-                    # 排除包含.log文件路径的情况（避免误判打开日志文件的进程）
-                    # 关键修复：确保是可执行文件路径，而不是其他包含local_agent的文件
-                    if ("local_agent" in cmdline_str and 
-                        not "python" in cmdline_str and 
-                        ".exe" in cmdline_str and
-                        not ".log" in cmdline_str and
-                        # 关键修复：确保是可执行文件路径，而不是其他包含local_agent的文件
-                        any(arg.endswith('local_agent.exe') for arg in proc_cmdline if isinstance(arg, str))):
-                        is_local_agent_process = True
-                
-                if is_local_agent_process:
-                    existing_processes_second.append(proc_pid)
-                        
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                continue
-        
-        # 第二次检测：如果发现新进程，根据服务模式决定是否退出
-        if len(existing_processes_second) > len(existing_processes):
-            logger.info(f"[INFO] 第二次检测发现 {len(existing_processes_second)} 个其他local_agent进程")
-            
-            # 再次检查服务模式状态
-            is_service_mode = check_if_service_mode()
-            
-            if not is_service_mode:
-                logger.warning(f"[WARN] 非服务模式下检测到新增进程，当前进程将退出")
-                sys.exit(0)
-            else:
-                logger.info("[INFO] 服务模式下允许进程共存，继续运行")
-            
     except Exception as e:
         logger.warning(f"[WARN] 多进程检测失败: {e}")
-        # 即使检测失败，也继续运行程序
     
     try:
         # 检测运行模式
         is_service_mode = check_if_service_mode()
         
         if not is_service_mode:
-            logger.info("[INFO] 启动本地代理应用...")
+            logger.info("[INFO] 检测到用户启动模式，启动A进程（用户进程）...")
             
             # 无论是否安装服务，都先尝试自动解压nssm.exe
             extract_success, extract_message = extract_of_scripts('nssm.exe')
@@ -661,42 +630,25 @@ def main():
             service_registered = auto_register_service()
             
             if service_registered:
-                logger.info("[INFO] 服务已注册，应用将在后台作为系统服务运行")
-                logger.info("[INFO] 您可以关闭此窗口，服务将继续在后台运行")
+                logger.info("[INFO] 系统服务注册成功！")
+                logger.info("[INFO] 服务将在系统后台自动运行（B进程）")
+                logger.info("[INFO] 当前进程将作为A进程运行，提供消息框支持")
                 
-                # 服务注册成功后，当前进程应该退出
-                # 让系统服务管理器启动新的服务进程
-                logger.info("[INFO] 服务注册成功，当前进程将退出，系统服务将在后台自动启动")
-                logger.info("[INFO] 请等待系统服务启动完成...")
-                
-                # 等待一段时间，确保服务注册信息已写入系统
-                time.sleep(3)
-                
-                # 检查服务是否已启动
-                if check_service_exists():
-                    logger.info("[INFO] 系统服务已启动，当前进程退出")
-                else:
-                    logger.info("[INFO] 系统服务注册完成，当前进程退出")
-                
-                # 关键修复：在退出前设置服务模式环境变量
-                # 确保系统服务管理器启动的新进程能够正确识别为服务模式
-                os.environ['LOCAL_AGENT_SERVICE_MODE'] = 'true'
-                
-                # 关键修复：添加明确的退出标志，避免无限循环
-                logger.info("[INFO] 设置服务模式环境变量，确保新进程正确识别")
-                
-                # 正常退出当前进程
-                sys.exit(0)
             else:
-                logger.info("[INFO] 服务注册失败或已存在，将以普通模式运行...")
+                logger.info("[INFO] 系统服务注册失败或已存在")
+                logger.info("[INFO] 当前进程将作为A进程运行，但系统服务可能无法自动启动")
+            
+            # 无论服务注册是否成功，都启动A进程
+            logger.info("[INFO] 启动A进程（用户进程）...")
+            run_a_process()
+            
         else:
-            logger.info("[INFO] 系统服务模式运行中，跳过服务注册检测...")
-        
-        # 运行应用主逻辑 - 只有在服务注册失败或已处于服务模式时才启动应用
-        logger.info(f"[INFO] 启动应用核心功能... (debug模式: {debug_mode})")
-        asyncio.run(run_application(debug=debug_mode))
-        
-        logger.info("[INFO] 本地代理应用已正常退出")
+            logger.info("[INFO] 检测到系统服务模式，启动B进程（系统服务进程）...")
+            logger.info("[INFO] B进程将运行核心业务逻辑")
+            logger.info("[INFO] 消息框功能将通过A进程的FastAPI服务提供")
+            
+            # 服务模式下运行B进程
+            run_b_process()
         
     except KeyboardInterrupt:
         logger.info("[INFO] 收到中断信号，应用正在退出...")

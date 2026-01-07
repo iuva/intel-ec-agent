@@ -49,7 +49,7 @@ class WhlUpdater:
         
         # 配置参数
         self.max_retries = 3
-        self.timeout = 600  # 10分钟超时
+        self.timeout = 1200  # 20分钟超时
         self.backup_enabled = True
         
         self.logger.info(f"WHL更新器初始化完成，临时目录: {self.temp_dir}")
@@ -181,10 +181,16 @@ class WhlUpdater:
             Tuple[bool, str]: (安装是否成功, 错误信息)
         """
         try:
-            # 构建pip安装命令
+            # 构建pip安装命令（优化网络配置）
             pip_command = [
                 python_path, "-m", "pip", "install", 
-                "--upgrade", "--force-reinstall", "--no-deps",
+                "--upgrade", "--force-reinstall",
+                "--timeout", "120",  # 连接超时120秒
+                "--retries", "5",     # 增加重试次数
+                "--default-timeout", "1200",  # 整体操作超时600秒（10分钟）
+                "--no-cache-dir",     # 禁用缓存，避免缓存问题
+                "--disable-pip-version-check",  # 禁用版本检查，减少网络请求
+                "-i", "https://intelpypi.intel.com/root/pypi/+simple/",
                 str(whl_path)
             ]
             
@@ -270,16 +276,14 @@ class WhlUpdater:
                 else:
                     self.logger.warning(f"pip缓存清理失败: {cache_result.stderr.strip()}")
                 
-                # 尝试修复包环境
-                fix_command = [python_path, "-m", "pip", "install", "--upgrade", "pip", "setuptools", "wheel"]
-                fix_result = run_with_logging(fix_command, command_name="pip_tools_upgrade", capture_output=True, text=True)
-                
-                if fix_result.returncode == 0:
-                    self.logger.info("pip工具更新成功")
-                    return True
+                # 清理以~开头的临时包目录
+                temp_cleanup_success = self._cleanup_temp_package_dirs(python_path)
+                if temp_cleanup_success:
+                    self.logger.info("临时包目录清理完成")
                 else:
-                    self.logger.warning(f"pip工具更新失败: {fix_result.stderr.strip()}")
-                    return False
+                    self.logger.warning("临时包目录清理失败或无需清理")
+                
+                return True
             
             self.logger.info("包环境检查正常")
             return True
@@ -287,8 +291,74 @@ class WhlUpdater:
         except Exception as e:
             self.logger.error(f"清理无效分发时发生错误: {e}")
             return False
-    
-    def _create_backup(self, package_name: str) -> bool:
+
+    def _cleanup_temp_package_dirs(self, python_path: str) -> bool:
+        """
+        清理以~开头且以.dist-info或.egg-info结尾的临时包目录
+        
+        Args:
+            python_path: Python可执行文件路径
+            
+        Returns:
+            bool: 清理是否成功（True表示成功或无需清理，False表示失败）
+        """
+        try:
+            import os
+            import shutil
+            from pathlib import Path
+            
+            # 获取Python安装目录
+            python_dir = Path(python_path).parent
+            site_packages_dir = python_dir / "lib" / "site-packages"
+            
+            if not site_packages_dir.exists():
+                self.logger.warning(f"site-packages目录不存在: {site_packages_dir}")
+                return True  # 无需清理
+            
+            # 查找以~开头且以.dist-info或.egg-info结尾的目录
+            temp_dirs_to_remove = []
+            for item in site_packages_dir.iterdir():
+                if item.is_dir():
+                    item_name = item.name
+                    # 检查是否符合条件：以~开头且以.dist-info或.egg-info结尾
+                    if (item_name.startswith('~') and 
+                        (item_name.endswith('.dist-info') or item_name.endswith('.egg-info'))):
+                        temp_dirs_to_remove.append(item)
+                        self.logger.info(f"发现临时包目录: {item_name}")
+            
+            if not temp_dirs_to_remove:
+                self.logger.info("未发现需要清理的临时包目录")
+                return True  # 无需清理
+            
+            # 创建备份目录
+            backup_dir = site_packages_dir / "backup_temp_packages"
+            backup_dir.mkdir(exist_ok=True)
+            
+            # 备份并删除临时目录
+            removed_count = 0
+            for temp_dir in temp_dirs_to_remove:
+                try:
+                    # 移动到备份目录
+                    backup_path = backup_dir / temp_dir.name
+                    shutil.move(str(temp_dir), str(backup_path))
+                    self.logger.info(f"已备份并删除临时目录: {temp_dir.name}")
+                    removed_count += 1
+                except Exception as e:
+                    self.logger.warning(f"删除临时目录 {temp_dir.name} 失败: {e}")
+            
+            self.logger.info(f"临时包目录清理完成: 清理了 {removed_count} 个目录")
+            
+            # 如果备份目录为空，删除备份目录
+            if not any(backup_dir.iterdir()):
+                backup_dir.rmdir()
+            
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"清理临时包目录时发生错误: {e}")
+            return False
+
+    def _create_backup(self, package_name: str, python_path: str) -> bool:
         """
         创建当前包备份
         
@@ -302,10 +372,6 @@ class WhlUpdater:
             return True
             
         try:
-            python_path = self._get_python_executable()
-            if not python_path:
-                self.logger.warning("无法获取Python路径，跳过备份")
-                return False
             
             # 获取当前安装版本
             freeze_command = [python_path, "-m", "pip", "freeze", "--all"]
@@ -500,12 +566,12 @@ class WhlUpdater:
                 # 包名只能包含字母、数字、下划线、点和连字符
                 # 不能以连字符开头或结尾，不能有连续连字符
                 if self._is_valid_package_name(package_name):
-                    return package_name
+                    return package_name.replace('_', '-')
                 else:
                     # 如果包名不符合规范，尝试清理
                     cleaned_name = self._clean_package_name(package_name)
                     self.logger.warning(f"包名 '{package_name}' 不符合规范，使用清理后的名称: '{cleaned_name}'")
-                    return cleaned_name
+                    return cleaned_name.replace('_', '-')
         
         # 如果找不到版本号，返回第一个部分
         return parts[0] if parts else "unknown"
@@ -759,7 +825,7 @@ class WhlUpdater:
         except Exception as e:
             self.logger.warning(f"清理临时文件时发生错误: {e}")
     
-    async def update_from_whl(self, whl_url: str) -> bool:
+    async def update_from_whl(self, whl_url: str, python_path: str) -> bool:
         """
         根据whl包URL进行覆盖更新
         
@@ -771,12 +837,6 @@ class WhlUpdater:
             bool: 更新是否成功
         """
         self.logger.info(f"开始WHL包更新流程，URL: {whl_url}")
-        
-        # 验证Python环境
-        python_path = self._get_python_executable()
-        if not python_path:
-            self.logger.error("无法获取有效的Python环境，更新失败")
-            return False
         
         # 下载whl包
         whl_path = await self._download_whl_file(whl_url)
@@ -831,7 +891,7 @@ class WhlUpdater:
             return False
 
 
-def update_from_whl_sync(whl_url: str) -> dict:
+def update_from_whl_sync(whl_url: str, python_path: str) -> dict:
     """
     便捷函数：根据whl包URL进行覆盖更新（同步接口）
     
@@ -846,16 +906,6 @@ def update_from_whl_sync(whl_url: str) -> dict:
     # 同步版本的更新逻辑
     logger = get_logger()
     logger.info(f"开始同步WHL包更新流程，URL: {whl_url}")
-    
-    # 验证Python环境
-    python_path = updater._get_python_executable()
-    if not python_path:
-        logger.error("无法获取有效的Python环境，更新失败")
-        return {"success": False, "error": "无法获取有效的Python环境"}
-    
-    # 使用项目统一的同步文件下载器
-    from pathlib import Path
-    import tempfile
     
     try:
         # 从URL提取文件名
@@ -946,7 +996,7 @@ def update_from_whl_sync(whl_url: str) -> dict:
         logger.info(f"检测到包名称: {package_name}")
         
         # 创建备份
-        backup_created = updater._create_backup(package_name)
+        backup_created = updater._create_backup(package_name, python_path)
         if not backup_created:
             logger.warning("备份创建失败，继续执行更新")
         
@@ -972,7 +1022,7 @@ def update_from_whl_sync(whl_url: str) -> dict:
         if success:
             logger.info("WHL包更新成功")
             # 清理临时文件（保留备份）
-            updater._cleanup_temp_files()
+            # updater._cleanup_temp_files()
             return {"success": True, "error": ""}
         else:
             logger.error(f"WHL包更新失败: {error_msg}")
@@ -993,7 +1043,7 @@ def update_from_whl_sync(whl_url: str) -> dict:
         return {"success": False, "error": str(e)}
 
 
-def update_from_whl(whl_url: str) -> bool:
+def update_from_whl(whl_url: str, python_path: str) -> bool:
     """
     便捷函数：根据whl包URL进行覆盖更新（异步接口，兼容旧版本）
     
@@ -1005,34 +1055,5 @@ def update_from_whl(whl_url: str) -> bool:
     """
     import asyncio
     updater = WhlUpdater()
-    return asyncio.run(updater.update_from_whl(whl_url))
+    return asyncio.run(updater.update_from_whl(whl_url, python_path))
 
-
-def main():
-    """命令行入口"""
-    logger = get_logger()
-    
-    if len(sys.argv) != 2:
-        logger.error("用法: python whl_updater.py <whl包URL>")
-        logger.error("示例: python whl_updater.py https://example.com/package-1.0.0-py3-none-any.whl")
-        sys.exit(1)
-    
-    whl_url = sys.argv[1]
-    
-    logger.info("WHL包更新工具启动")
-    logger.info(f"目标URL: {whl_url}")
-    logger.info("-" * 50)
-    
-    # 执行更新
-    success = update_from_whl(whl_url)
-    
-    if success:
-        logger.info("WHL包更新成功！")
-        sys.exit(0)
-    else:
-        logger.error("WHL包更新失败！")
-        sys.exit(1)
-
-
-if __name__ == "__main__":
-    main()

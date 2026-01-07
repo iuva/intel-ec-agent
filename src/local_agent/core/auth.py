@@ -61,7 +61,7 @@ def refresh_token():
     code = body.get('code')
     if code == 200:
         data = body.get('data')
-        auth_token = data.get('token')
+        auth_token = data.get('access_token')
         cache.set(AUTHORIZATION_CACHE_KEY, auth_token, ttl=data.get('expires_in'))
         cache.set(AUTH_INFO_CACHE_KEY, data)
     else:

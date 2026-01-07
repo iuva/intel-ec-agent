@@ -6,19 +6,21 @@
 """
 
 import asyncio
-import json
 import signal
 import sys
-import time
 from datetime import datetime
 from typing import Optional, Dict, Any
+
+from local_agent.utils.http_client import http_post
 
 from ..config import get_config
 from ..logger import get_logger
 from ..api.server import APIServer
 from .host_init import HostInit
-from ..websocket.message_sender import send_message_with_queue
-from ..utils.timer_utils import set_timeout
+from .vnc import VNC
+from .ek import EK
+from .global_cache import set_agent_status, get_agent_status_by_key, get_ek_test_info
+from ..core.app_update import update_app
 
 
 class LocalAgentApplication:
@@ -141,9 +143,6 @@ class LocalAgentApplication:
             
             # 启动保活任务
             self.keep_alive_task = asyncio.create_task(self._keep_alive_loop())
-            
-            # 启动健康检查任务
-            # self.health_check_task = asyncio.create_task(self._health_check_loop())
             
             self.running = True
             self.logger.info("本地代理应用启动成功")
@@ -306,12 +305,18 @@ class LocalAgentApplication:
     async def _main_loop(self):
         """主循环"""
         try:
+            flag = False
             while self.running:
                 # 主循环任务
                 await asyncio.sleep(30)
                 
                 # 检查组件状态
                 await self._check_component_health()
+
+                flag = not flag
+                if flag:
+                    # 每分钟检查一次vnc连接状态
+                    self._check_vnc_connection()
                 
         except asyncio.CancelledError:
             self.logger.info("主循环任务被取消")
@@ -320,24 +325,44 @@ class LocalAgentApplication:
             # 避免递归调用，记录错误但不重启
             self.logger.warning("主循环发生错误，但为避免递归不重启应用")
     
-    async def _health_check_loop(self):
-        """健康检查循环"""
-        try:
-            while self.running:
-                # 执行健康检查
-                health_status = await self._perform_health_check()
-                
-                if not health_status['healthy']:
-                    self.logger.warning("健康检查失败，准备重启组件")
-                    await self._restart_components()
-                
-                # 每30秒检查一次
-                await asyncio.sleep(30)
-                
-        except asyncio.CancelledError:
-            self.logger.info("健康检查任务被取消")
-        except Exception as e:
-            self.logger.error(f"健康检查循环错误: {e}")
+    def _check_vnc_connection(self):
+        """检查vnc连接状态"""
+        if not get_agent_status_by_key("use"):
+            return
+
+        is_con = VNC.is_connecting()
+
+        status = get_agent_status_by_key("vnc")
+        if status != is_con:
+            res = http_post(url='/host/agent/vnc/report', data={'vnc_state': 1 if is_con else 2})
+            
+            res_data = res.get('data', {})
+            code = res_data.get('code', 0)
+
+            if code == 200:
+                set_agent_status(vnc = is_con)
+                if is_con and get_agent_status_by_key("pre"):
+                    # 启动 ek 测试
+                    test_info = get_ek_test_info()
+                    response = http_post(
+                        url=f"http://127.0.0.1:8001/test_start",
+                        data=test_info
+                    )
+                    # EK.start_test(test_info['tc_id'], test_info['cycle_name'], test_info['user_name'])
+                    set_agent_status(pre = False)
+
+                if not is_con and not get_agent_status_by_key("test"):
+                    # 是否完全结束了操作
+                    set_agent_status(use = False)
+                    # 执行更新补偿
+                    update_app()
+            
+            # 如果code 是 53016 则断开所有 vnc 连接
+            elif code == 53016:
+                VNC.disconnect()
+                set_agent_status(vnc = False)
+
+
     
     async def _keep_alive_loop(self):
         """保活循环 - 使用增强的心跳管理器"""
@@ -378,7 +403,7 @@ class LocalAgentApplication:
         try:
             from ..websocket.global_websocket_manager import get_websocket_manager
             manager = await get_websocket_manager()
-            if not manager.is_running() and manager.is_supposed():
+            if (not manager.is_running() or not manager.is_connected()) and manager.is_supposed():
                 self.logger.warning("WebSocket服务异常，准备重启")
                 await manager.stop()
                 await asyncio.sleep(1)
@@ -392,45 +417,6 @@ class LocalAgentApplication:
 
         except Exception as e:
             self.logger.error(f"检查WebSocket服务状态时出错: {e}")
-    
-
-    
-    async def _perform_health_check(self) -> Dict[str, Any]:
-        """执行健康检查"""
-        health_status = {
-            "healthy": True,
-            "components": {},
-            "timestamp": datetime.now().isoformat()
-        }
-        
-        # 检查API服务器
-        if self.api_server:
-            api_healthy = self.api_server.is_running()
-            health_status["components"]["api_server"] = api_healthy
-            if not api_healthy:
-                health_status["healthy"] = False
-        
-        # 检查WebSocket服务
-        try:
-            from ..websocket.global_websocket_manager import get_websocket_manager
-            manager = await get_websocket_manager()
-            ws_healthy = manager.is_running()
-            health_status["components"]["websocket_service"] = ws_healthy
-            # WebSocket服务失败不影响整体健康状态
-        except Exception as e:
-            self.logger.error(f"检查WebSocket服务健康状态时出错: {e}")
-            health_status["components"]["websocket_service"] = False
-        
-        # 检查内存使用
-        import psutil
-        memory_percent = psutil.virtual_memory().percent
-        health_status["memory_usage"] = memory_percent
-        
-        if memory_percent > 90:  # 内存使用超过90%
-            health_status["healthy"] = False
-            self.logger.warning(f"内存使用过高: {memory_percent}%")
-        
-        return health_status
     
 
     

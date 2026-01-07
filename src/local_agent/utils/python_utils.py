@@ -53,14 +53,17 @@ class PythonUtils:
             # 如果找不到合适的Python环境，弹出消息窗口
             logger.error("未找到可用的Python环境")
             # 延迟导入以避免循环依赖
-            from ..ui.message_proxy import show_message_box
+            from ..utils.message_tool import show_message_box
             
             result = show_message_box(
                 msg="未找到可用的python环境，请安装 3.8 或更高版本后进行重试",
-                title="Python环境初始化失败"
+                title="Python环境初始化失败",
+                cancel_show=True,
+                confirm_text="重试",
+                cancel_text="放弃"
             )
             
-            if result == "cancel":
+            if result == "放弃":
                 logger.error("用户选择放弃Python环境初始化")
                 return None
             else:

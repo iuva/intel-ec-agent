@@ -304,7 +304,7 @@ class WebSocketClient:
                 continue
             except Exception as e:
                 self.logger.error(f"接收消息任务错误: {e}")
-                await self._handle_connection_error(e)
+                # await self._handle_connection_error(e)
                 break
 
     def is_connected(self):
@@ -394,32 +394,3 @@ class WebSocketClient:
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """异步上下文管理器退出"""
         await self.disconnect()
-
-
-async def create_websocket_client() -> WebSocketClient:
-    """创建WebSocket客户端实例"""
-    client = WebSocketClient()
-    
-    # 设置默认回调
-    async def on_message(message):
-        logger = get_logger(__name__)
-        logger.info(f"收到WebSocket消息: {message}")
-    
-    async def on_connect():
-        logger = get_logger(__name__)
-        logger.info("WebSocket连接成功")
-    
-    async def on_disconnect():
-        logger = get_logger(__name__)
-        logger.info("WebSocket连接断开")
-    
-    async def on_error(error):
-        logger = get_logger(__name__)
-        logger.error(f"WebSocket错误: {error}")
-    
-    client.set_on_message(on_message)
-    client.set_on_connect(on_connect)
-    client.set_on_disconnect(on_disconnect)
-    client.set_on_error(on_error)
-    
-    return client

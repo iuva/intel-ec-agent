@@ -13,7 +13,12 @@ from ..logger import get_logger
 from .message_manager import message_manager
 from .message_sender import send_message
 from ..utils.subprocess_utils import run_with_logging_safe
-from ..ui.message_proxy import show_message_box
+from ..utils.message_tool import show_message_box
+from ..core.global_cache import cache, get_agent_status, set_agent_status, set_ek_test_info, get_agent_status_by_key
+from ..core.constants import APP_UPDATE_CACHE_KEY
+from ..core.app_update import update_app
+from ..core.ek import EK
+from ..core.vnc import VNC
 
 
 class WebSocketMessageHandler:
@@ -48,15 +53,18 @@ class WebSocketMessageHandler:
         # notification 通知
         self._register_notification_handler()
         
-        # 注册自更新相关处理器
+        # 注册更新相关处理器
         self._register_update_handlers()
+
+        # ek 测试相关处理器
+        self._register_ek_test_handlers()
     
     def _register_ping_handler(self):
         """注册ping消息处理器"""
-        @message_manager.register_handler("heartabeat_ack", "处理ping消息")
+        @message_manager.register_handler("heartbeat_ack", "处理ping消息")
         async def handle_ping(message: Dict[str, Any]):
             """处理ping消息"""
-            self.logger.debug("收到ping消息，发送pong响应")
+            self.logger.debug("收到心跳响应")
     
 
     def _register_timeout_handler(self):
@@ -108,60 +116,80 @@ class WebSocketMessageHandler:
                 show_message_box(
                     msg=message.get('content', ''),
                     title=message.get('title', ''),
-                    show_cancel=False,
-                    retry_text="确认",
                 )
-    
+
+
+
+
+    def _register_ek_test_handlers(self):
+        """注册 ek 测试相关处理器"""
+        
+        # vnc 连接通知
+        @message_manager.register_handler("connection_notification", "vnc 连接通知")
+        async def handle_connection_notification(message: Dict[str, Any]):
+            """处理 vnc 连接通知"""
+            # 检查是否已处于测试状态
+            if get_agent_status_by_key('use'):
+                self.logger.warning("已处于测试状态，将忽略此消息")
+                return
+
+            set_agent_status(use=True)
+            set_agent_status(pre=True)
+            details = message['details']
+            details['host_id'] = message['host_id']
+            set_ek_test_info(details)
+        
+        
+        # 释放 host 通知 host_offline_notification
+        @message_manager.register_handler("host_offline_notification", "host 离线通知")
+        async def handle_host_offline_notification(message: Dict[str, Any]):
+            """处理 host 离线通知"""
+            EK.test_kill()
+            VNC.disconnect()
+
+
+
+
     def _register_update_handlers(self):
         """注册自更新相关处理器"""
         
         # 注册自更新指令处理器（兼容旧版本）
-        @message_manager.register_handler("update", "处理自更新指令")
+        @message_manager.register_handler("ota_deploy", "软件更新")
         async def handle_update(message: Dict[str, Any]):
-            """处理自更新指令"""
-            from ..auto_update.auto_updater import AutoUpdater
-            updater = AutoUpdater()
-            updater.perform_update("5fb21f3eda3dabf1dcbac96a030216f6", "http://localhost/file/local_agent.exe")
-        
-        # 注册检查更新请求处理器
-        @message_manager.register_handler("check_update", "处理检查更新请求")
-        async def handle_check_update(message: Dict[str, Any]):
-            """处理检查更新请求"""
-            exe_url = message.get('exe_url', '')
-            if not exe_url:
-                await send_message({
-                    "type": "update_check_response",
-                    "success": False,
-                    "message": "缺少exe_url参数"
-                })
+            """处理软件更新指令"""
+
+
+            name = message.get('conf_name', '')
+
+            # 优先进行反馈，表示接收到了更新通知
+            await send_message({
+                "type": "ota_deploy_response",
+                "conf_name": name,
+                "conf_ver": message['conf_ver']
+            })
+
+            if not name:
+                self.logger.error("更新指令缺少软件名称")
                 return
             
-            result = await self.application.auto_updater.check_update(exe_url)
-            await send_message({
-                "type": "update_check_response",
-                "success": True,
-                "result": result
-            })
-        
-        # 注册执行更新请求处理器
-        @message_manager.register_handler("perform_update", "处理执行更新请求")
-        async def handle_perform_update(message: Dict[str, Any]):
-            """处理执行更新请求"""
-            exe_url = message.get('exe_url', '')
-            if not exe_url:
-                await send_message({
-                    "type": "update_perform_response",
-                    "success": False,
-                    "message": "缺少exe_url参数"
-                })
-                return
+            # 新版本信息放入缓存
+            update_info = cache.get(APP_UPDATE_CACHE_KEY, {})
+            update_info.update({name: message})
+            cache.set(APP_UPDATE_CACHE_KEY, update_info)
+
+            # 是否符合更新条件
+            agent_state = get_agent_status()
             
-            result = await self.application.auto_updater.perform_update(exe_url)
-            await send_message({
-                "type": "update_perform_response",
-                "success": True,
-                "result": result
-            })
+            is_test = agent_state.get('test', False)
+            is_sut = agent_state.get('sut', False)
+            is_vnc = agent_state.get('vnc', False)
+
+            if not is_test and not is_sut and not is_vnc:
+                update_app()
+            # 不符合更新条件不进行处理，会在测试结束、硬件信息获取结束时触发更新
+            # 测试结束是指：测试用例执行并提交完毕，且vnc 断开连接
+
+
     
     def get_handler_count(self) -> int:
         """获取已注册的处理器数量"""

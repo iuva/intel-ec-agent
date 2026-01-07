@@ -145,14 +145,17 @@ class TimerManager:
                 
                 # 检查是否是异步函数
                 if asyncio.iscoroutinefunction(task.callback):
-                    # 异步函数在当前线程的事件循环中运行
-                    loop = asyncio.get_event_loop()
-                    if loop.is_running():
-                        # 如果事件循环正在运行，创建任务
-                        asyncio.create_task(task.callback(*task.args, **task.kwargs))
-                    else:
-                        # 否则直接运行
-                        loop.run_until_complete(task.callback(*task.args, **task.kwargs))
+                    # 异步函数需要在新线程中创建事件循环
+                    try:
+                        # 尝试获取当前线程的事件循环
+                        loop = asyncio.get_event_loop()
+                    except RuntimeError:
+                        # 如果没有事件循环，创建新的
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                    
+                    # 运行异步函数
+                    loop.run_until_complete(task.callback(*task.args, **task.kwargs))
                 else:
                     # 同步函数直接调用
                     task.callback(*task.args, **task.kwargs)
