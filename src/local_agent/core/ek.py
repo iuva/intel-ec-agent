@@ -1,13 +1,13 @@
 """
-    ek 相关封装 - 使用项目统一日志系统记录子进程执行
+    EK related encapsulation - Use project unified logging system to record subprocess execution
 """
 import shutil
 import psutil
 import os
-from ..utils.subprocess_utils import run_con_or_none, run_as_admin
+from ..utils.subprocess_utils import run_con_or_none
 from ..logger import get_logger
-from ..core.global_cache import cache
 from ..utils.python_utils import PythonUtils
+from ..utils.path_utils import PathUtils
 from local_agent.utils.http_client import http_client
 import sys
 import subprocess
@@ -19,27 +19,27 @@ ek_python = ek_base_path + 'python.exe'
 ek_com = ek_base_path + 'ek.exe'
 
 class EK:
-    """EK 命令封装类 - 自动记录子进程执行日志"""
+    """EK [command encapsulation] class - [automatically records sub] process execution log"""
 
     @staticmethod
     def env_check():
         """
-        检查 ek 是否存在
+        Check if EK exists
         """
-        # 测试虚拟环境的python 是否可用
+        # Test if the virtual environment python is available
         is_python_ok = run_con_or_none(
             [ek_python, '--version'],
             command_name='ek_python_version',
             capture_output=True,
             text=True,
-            timeout=10  # 10秒超时
+            timeout=100  # 10 second timeout
         )
         
         if is_python_ok:
-            logger.error('Execution Kit 虚拟环境python 可用')
+            logger.error('Execution Kit virtual environment python is available')
             return
 
-        # 尝试删除相对路径的 ek 目录
+        # Try to delete the relative path ek directory
         if os.path.exists('ek'):
             EK.force_stop_ek_processes()
             shutil.rmtree('ek')
@@ -51,63 +51,63 @@ class EK:
             command_name='ek_version',
             capture_output=True,
             text=True,
-            timeout=100  # 10秒超时
+            timeout=100  # 10 second timeout
         )
 
     
     @staticmethod
     def version():
         """
-        调用系统命令 ek version
+        Call system command ek version
         
-        如果响应为找不到 ek 命令，方法返回 None
-        否则方法返回 ek version 的响应原字符串
+        If the response indicates that the ek command is not found, the method returns None
+        Otherwise, the method returns the original response string from ek version
         
         Returns:
-            str | None: ek version 命令的输出，如果命令不存在则返回 None
+            str | None: Output of ek version command, returns None if command does not exist
         """
-        # 使用增强的子进程执行工具，自动记录执行过程和结果
+        # Use enhanced subprocess execution tool to automatically record execution process and results
         return run_con_or_none(
             [ek_com, 'version'],
             command_name='ek_version',
             capture_output=True,
             text=True,
-            timeout=10  # 10秒超时
+            timeout=100  # 10 second timeout
         )
 
     @staticmethod
     def update(url: str):
         """
-        更新ek
+        Update EK
         """
         update_url = http_client._build_file_url(url)
         if update_url:
             EK.force_stop_ek_processes()
-            # 延迟导入以避免循环依赖
+            # Delay import to avoid circular dependency
             from local_agent.utils.whl_updater import update_from_whl_sync
             resunt = update_from_whl_sync(update_url, ek_python)
             if resunt.get('success', False):
-                logger.info('Execution Kit 更新成功')
+                logger.info('Execution Kit update successful')
             else:
-                logger.error(f'Execution Kit 更新失败: {resunt.get("error", "未知错误")}')
+                logger.error(f'Execution Kit update failed: {resunt.get("error", "Unknown error")}')
             return resunt.get('success', False)
 
     @staticmethod
     def force_stop_ek_processes():
-        """强制停止基于ek虚拟环境的所有进程"""
+        """[Force] stop [all processes based on] ek [virtual environment]"""
         
         ek_python_path = os.path.abspath(ek_python)
         
         if not os.path.exists(ek_python_path):
-            logger.info("ek虚拟环境不存在，无需停止进程")
+            logger.info("ek virtual environment does not exist, no processes to stop")
             return 0
         
         stopped_count = 0
         ek_python_path = os.path.normcase(ek_python_path)
         
-        logger.info(f"🚨 强制停止基于ek虚拟环境的所有进程...")
+        logger.info(f"🚨 Force stopping all processes based on ek virtual environment...")
         
-        # 收集所有需要停止的进程
+        # Collect all processes that need to be stopped
         processes_to_stop = []
         for proc in psutil.process_iter(['pid', 'name', 'exe', 'cmdline']):
             try:
@@ -119,22 +119,22 @@ class EK:
                 continue
         
         if not processes_to_stop:
-            logger.info("✅ 没有找到需要停止的ek进程")
+            logger.info("✅ No ek processes found that need to be stopped")
             return 0
         
-        logger.info(f"找到 {len(processes_to_stop)} 个需要停止的进程")
+        logger.info(f"Found {len(processes_to_stop)} processes that need to be stopped")
         
-        # 强制停止所有进程
+        # Force stop all processes
         for proc in processes_to_stop:
             try:
                 if proc.is_running():
-                    logger.info(f"🔫 强制停止 PID={proc.pid}: {proc.info['cmdline']}")
-                    proc.kill()  # 直接kill，不尝试terminate
+                    logger.info(f"🔫 Force stopping PID={proc.pid}: {proc.info['cmdline']}")
+                    proc.kill()  # Direct kill, no attempt to terminate
                     stopped_count += 1
             except:
                 continue
         
-        # 额外保险：使用系统命令再次确认
+        # Additional safety: use system command to confirm again
         if sys.platform == "win32":
             try:
                 subprocess.run(['taskkill', '/IM', 'python.exe', '/F'], 
@@ -142,7 +142,7 @@ class EK:
             except:
                 pass
         
-        logger.info(f"✅ 已强制停止 {stopped_count} 个ek虚拟环境进程")
+        logger.info(f"✅ Force stopped {stopped_count} ek virtual environment processes")
         return stopped_count
 
 
@@ -150,29 +150,31 @@ class EK:
     @staticmethod
     def start_test(tc_id: str, cycle_name: str, user_name: str):
         """
-        开始测试
+        Start test
         """
-        # 使用增强的子进程执行工具，自动记录执行过程和结果
+        # Use enhanced subprocess execution tool to automatically record execution process and results
         return run_con_or_none(
             [ek_com, 'launch', tc_id, cycle_name, f'"{user_name}"'],
             command_name='ek_start',
             capture_output=True,
             text=True,
-            timeout=50  # 50秒超时
+            timeout=100  # 50 second timeout
         )
     
 
     @staticmethod
     def test_kill():
         """
-        终止测试
+        Terminate test
         """
-        # 使用增强的子进程执行工具，自动记录执行过程和结果
+        root_path = PathUtils.get_root_path()
+
+        # Use enhanced subprocess execution tool to automatically record execution process and results
         return run_con_or_none(
-            ['cmd', '/c', 'echo', 'y', '|', ek_com, 'kill', '--all'],
+            ['cmd', '/c', 'echo', 'y', '|', f'{root_path}/{ek_com}', 'kill', '--all'],
             command_name='ek_kill',
             capture_output=True,
             text=True,
-            timeout=10  # 10秒超时
+            timeout=100  # 10 second timeout
         )
             

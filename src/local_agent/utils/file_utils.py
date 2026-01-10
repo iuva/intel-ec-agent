@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-文件操作工具类
-提供文件解压、复制等常用操作
+File operation utility class
+Provides common operations like file extraction, copying, etc.
 """
 
 import os
@@ -14,72 +14,72 @@ from local_agent.logger import get_logger
 
 
 class FileUtils:
-    """文件操作工具类"""
+    """File operation utility class"""
     
     @staticmethod
     def extract_file_from_scripts(file_name: str, overwrite: bool = False) -> Tuple[bool, str]:
         """
-        从scripts目录解压文件到当前目录
+        Extract file from scripts directory to current directory
         
         Args:
-            file_name: 文件名
-            overwrite: 如果文件存在是否覆盖
+            file_name: File name
+            overwrite: Whether to overwrite if file exists
             
         Returns:
-            (成功状态, 消息)
+            (success status, message)
         """
         try:
-            # 获取当前exe路径
+            # Get current exe path
             exe_path = sys.executable
             working_dir = Path(exe_path).parent
             
-            # 检查当前目录是否已有文件
+            # Check if file already exists in current directory
             target_path = working_dir / file_name
             if target_path.exists() and not overwrite:
-                return True, f"{file_name}已存在，跳过解压"
+                return True, f"{file_name} already exists, skipping extraction"
             
-            # 检查是否在打包后的环境中运行
-            # PyInstaller会将数据文件解压到临时目录
+            # Check if running in packaged environment
+            # PyInstaller will extract data files to temporary directory
             if hasattr(sys, '_MEIPASS'):
-                # 在打包环境中，从临时目录复制
+                # In packaged environment, copy from temporary directory
                 temp_dir = Path(sys._MEIPASS)
                 source_file = temp_dir / 'scripts' / file_name
                 
                 if source_file.exists():
-                    # 复制文件到当前目录
+                    # Copy file to current directory
                     shutil.copy2(source_file, target_path)
                     logger = get_logger(__name__)
-                    logger.info(f"[INFO] 已解压文件到: {target_path}")
-                    return True, f"{file_name}解压成功"
+                    logger.info(f"[INFO] File extracted to: {target_path}")
+                    return True, f"{file_name} extraction successful"
                 else:
-                    return False, f"打包环境中未找到{file_name}"
+                    return False, f"{file_name} not found in packaged environment"
             else:
-                # 非打包环境，尝试从项目目录复制
+                # Non-packaged environment, try to copy from project directory
                 project_root = Path(__file__).parent.parent.parent
                 source_file = project_root / 'scripts' / file_name
                 
                 if source_file.exists():
                     shutil.copy2(source_file, target_path)
                     logger = get_logger(__name__)
-                    logger.info(f"[INFO] 已复制文件到: {target_path}")
-                    return True, f"{file_name}复制成功"
+                    logger.info(f"[INFO] File copied to: {target_path}")
+                    return True, f"{file_name} copy successful"
                 else:
-                    return False, f"项目目录中未找到{file_name}"
+                    return False, f"{file_name} not found in project directory"
                     
         except Exception as e:
-            return False, f"{file_name}解压失败: {str(e)}"
+            return False, f"{file_name} extraction failed: {str(e)}"
     
     @staticmethod
     def extract_multiple_files(file_names: list, overwrite: bool = False) -> Tuple[bool, list]:
         """
-        批量解压多个文件
+        Batch extract multiple files
         
         Args:
-            file_names: 文件名列表
-            overwrite: 如果文件存在是否覆盖
+            file_names: List of file names
+            overwrite: Whether to overwrite if files exist
             
         Returns:
-            (整体成功状态, 详细结果列表)
+            (Overall success status, detailed results list)
         """
         results = []
         all_success = True

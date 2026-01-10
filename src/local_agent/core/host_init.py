@@ -14,10 +14,10 @@ from ..utils.version_utils import get_app_version, is_newer_version
 from local_agent.utils.http_client import http_get, http_client
 from ..utils.environment import Environment
 
-# 延迟导入以避免循环依赖
+# Delay import to avoid loop dependency
 # from local_agent.utils.whl_updater import update_from_whl_sync
 from ..utils.message_tool import show_message_box
-from ..utils.python_utils import PythonUtils  # 导入PythonUtils类
+from ..utils.python_utils import PythonUtils  # Import PythonUtils class
 from ..utils.timer_utils import set_timeout
 from ..utils.time_utils import TimeUtils
 from .vnc import VNC
@@ -26,13 +26,13 @@ from local_agent.core.app_update import report_version
 
 @dataclass
 class LocalHostInfo:
-    """本地主机信息数据类"""
+    """Local host info data class"""
     mg_id: str
     username: str
     host_ip: str
     
     def to_dict(self):
-        """将对象转换为字典，用于JSON序列化"""
+        """Convert object to dictionary for JSON serialization"""
         return {
             "mg_id": self.mg_id,
             "username": self.username,
@@ -41,20 +41,20 @@ class LocalHostInfo:
 
 
 class HostInit:
-    """主机初始化类"""
+    """Host initialization class"""
     def __init__(self):
         self.config = get_config()
         self.logger = get_logger(__name__)
-        self.logger.info("主机初始化开始")
+        self.logger.info("Host initialization starting")
 
-        # 尝试启动 VNC 服务
+        # TryStart VNC Service
         VNC.start_vncserver()
 
-        # python 初始化
+        # python Initialize
         PythonUtils.get_python_check()
 
-        # 获取主机信息并封装到对象中
-        # 统一用户名识别机制，避免服务模式下用户名不一致导致的冲突
+        # Get host info and encapsulate into object
+        # Unified username identification mechanism to avoid conflicts caused by inconsistent usernames in service mode
         username = self._get_unified_username()
         
         local_info = LocalHostInfo(
@@ -63,27 +63,27 @@ class HostInit:
             host_ip=self.get_ip_address()
         )
         
-        # 将主机信息存入缓存
+        # Store host info in cache
         cache.set(LOCAL_INFO_CACHE_KEY, local_info)
 
-        # 版本核验，仅exe 运行时检查
+        # Version verification, only check when running as exe
         if not Environment.is_development():
             self.check_versions()
 
-        # 定时获取硬件信息
-        # self.timing_hardware_info(start=True)11
+        # Timed get hardware info
+        self.timing_hardware_info(start=True)
         
-        from ..utils.websocket_sync_utils import start_websocket_sync
-        start_websocket_sync(True)
+        # from ..utils.websocket_sync_utils import start_websocket_sync
+        # start_websocket_sync(True)
 
 
     def get_hardware_info(self):
         """
-        获取硬件信息, 如果15分钟还没有收到硬件信息，则自动重新调用
+        Get hardware information, if no hardware information is received within 15 minutes, automatically call again
         """
-        self.logger.info("获取硬件信息")
+        self.logger.info("Obtained hardware info")
         
-        # 如果不在测试中，优先停止websocket，保证不在获取硬件信息过程中执行测试
+        # If not in test, prioritize stopping websocket to ensure no test execution during hardware info retrieval
         if not get_agent_status_by_key('test'):
             from ..utils.websocket_sync_utils import stop_websocket_sync
             stop_websocket_sync()
@@ -91,39 +91,39 @@ class HostInit:
 
         set_agent_status(sut=True)
         DMR.get_hardware_info()
-        self.logger.info("获取硬件信息-调用结束")
-        # 添加定时任务，15分钟后再次执行
+        self.logger.info("Obtained hardware info - call completed")
+        # Add timed task, execute again after 15 minutes
         task_id = set_timeout(900, self.get_hardware_info)
-        # 缓存定时任务id
+        # Cache timed task id
         cache.set(HARDWARE_INFO_TASK_ID, task_id)
 
 
     def timing_hardware_info(self, start=False):
         """
-        定时获取硬件信息
+        Timed hardware information retrieval
         """
 
-        # 获取硬件信息
+        # Get hardware info
         self.get_hardware_info()
 
-        # 每天0点再次执行
+        # Execute again at 00:00 every day
         set_timeout(TimeUtils.get_seconds_to_next_target("00:00:00"), self.timing_hardware_info)
 
-        # 非启动时调用，检查版本
+        # Check version when not starting
         if not start:
             self.check_versions()
 
 
     def check_versions(self):
         """
-        检查 ek 和 kw 版本
+        Check ek and kw versions
         """
-        # 获取软件当前版本
+        # Get current software version
         current_version = get_app_version(False)
         
-        self.logger.info(f"当前软件版本: {current_version}")
+        self.logger.info(f"Current software version: {current_version}")
 
-        # 从服务端查取最新版本信息
+        # Get latest version info from service
         versionInfo = None
 
 
@@ -134,17 +134,17 @@ class HostInit:
                 res_data = res.get('data', {})
                 code = res_data.get('code', 0)
 
-                self.logger.info(f"版本信息获取结果：{res_data}")
+                self.logger.info(f"Version info obtained result: {res_data}")
                 if code != 200:
 
                     result = show_message_box(
-                        msg=f"从服务器获取最新可用版本失败！",
-                        title="网络异常",
-                        confirm_text="重试"
+                        msg=f"Failed to retrieve the latest available version from the server!",
+                        title="Network anomaly",
+                        confirm_text="Retry"
                     )
 
 
-                    self.logger.info("用户选择重试，重新获取版本信息")
+                    self.logger.info("User chose to retry, re-obtaining version info")
                     continue
                 else:
                     arr = res_data.get('data')
@@ -153,93 +153,93 @@ class HostInit:
                     break
             
             except Exception as e:
-                self.logger.error(f"获取版本信息发送异常: {e}")
+                self.logger.error(f"Obtained version info exception: {e}")
                 result = show_message_box(
-                    msg=f"从服务器获取最新可用版本失败！",
-                    title="网络异常",
-                    confirm_text="重试"
+                    msg=f"Failed to retrieve the latest available version from the server!",
+                    title="Network anomaly",
+                    confirm_text="Retry"
                 )
 
-                self.logger.info("用户选择重试，重新获取版本信息")
+                self.logger.info("User chose to retry, re-obtaining version info")
                 continue
 
-        self.logger.info(f"最新版本信息: {versionInfo}")
+        self.logger.info(f"Latest version info: {versionInfo}")
 
-        # 判断当前软件版本是否最新
+        # Check if current software version is the latest
         agentVersion = versionInfo.get('agent')
 
-        # 检查agentVersion是否为None
+        # Check if agent version is not None
         if agentVersion and agentVersion.get('conf_ver'):
 
-            # 检查是否在10分钟内有更新失败记录，防止无限循环
+            # Check if there are update failure records within 10 minutes to prevent infinite loop
             import time
             from local_agent.core.persistent_storage import get_persistent_data, set_persistent_data
             
-            # 获取上次更新失败时间
+            # Get last update failure time
             last_update_failure_time = get_persistent_data('last_update_failure_time', 'update_status', 0)
             
             if last_update_failure_time > 0:
-                self.logger.info(f"上次更新失败时间: {time.ctime(last_update_failure_time)}")
+                self.logger.info(f"Last update failure time: {time.ctime(last_update_failure_time)}")
                 report_version('agent', agentVersion.get('conf_ver'), 3)
 
-            # 计算时间差（秒）
+            # Calculate time difference (seconds)
             current_time = time.time()
             time_diff = current_time - last_update_failure_time
             
-            # 如果10分钟内有更新失败记录，则不进行更新
+            # If there are update failure records within 10 minutes, do not proceed with update
             if last_update_failure_time == 0 or time_diff > 600:
-                # 版本比对
+                # Version comparison
                 agent_new_ver = agentVersion.get('conf_ver')
                 agent_is_new = is_newer_version(agent_new_ver, current_version)
 
                 if agent_is_new:
-                    self.logger.info('agent 需要更新')
+                    self.logger.info('Agent needs update')
                     report_version('agent', agent_new_ver, 1)
                     
                     try:
-                        # 延迟导入以避免循环依赖
+                        # Delay import to avoid loop dependency
                         from local_agent.auto_update.auto_updater import AutoUpdater
                         updater = AutoUpdater()
-                        # 异步执行更新操作
+                        # Execute update operation asynchronously
                         result = updater.perform_update_sync(
                             expected_md5=agentVersion.get('conf_md5'),
                             download_url=agentVersion.get('conf_url')
                         )
 
-                        # 如果程序走到了这里，说明更新脚本并没有杀死当前进程，更新操作失败
+                        # If the program reaches here, it means the update script didn't kill the current process, update operation failed
                         if not result.get('success', False):
-                            # 对更新失败的结果进行持久化存储
-                            error_message = result.get('error', '未知错误')
-                            self.logger.error(f"更新失败: {error_message}")
+                            # Persist update failure result
+                            error_message = result.get('error', 'Unknown error')
+                            self.logger.error(f"Update failed: {error_message}")
                             
-                            # 存储更新失败时间
+                            # Store update failure time
                             set_persistent_data('last_update_failure_time', current_time, 'update_status')
                             set_persistent_data('last_update_error', error_message, 'update_status')
-                            self.logger.info(f"已记录更新失败时间: {current_time}")
+                            self.logger.info(f"Recorded update failure time: {current_time}")
                             report_version('agent', agent_new_ver, 3)
                         
                     except Exception as e:
-                        self.logger.error(f"更新操作异常: {e}")
+                        self.logger.error(f"Update operation exception: {e}")
                         current_time = time.time()
                         set_persistent_data('last_update_failure_time', current_time, 'update_status')
                         set_persistent_data('last_update_error', str(e), 'update_status')
-                        self.logger.info(f"已记录更新异常时间: {current_time}")
+                        self.logger.info(f"Recorded update exception time: {current_time}")
                         report_version('agent', agent_new_ver, 3)
                 else:
                     report_version('agent', current_version, 2)
 
-        # ek 是否需要更新
+        # Check if EK needs update
         ekVersion = versionInfo.get('ek')
         EK.env_check()
         if ekVersion:
             ek_new_version = ekVersion.get('conf_ver')
             ek_is_new = is_newer_version(ek_new_version, EK.version())
             if ek_is_new:
-                self.logger.info('Execution Kit 需要更新')
+                self.logger.info('Execution Kit needs update')
                 report_version('ek', ek_new_version, 1)
                 EK.update(ekVersion.get('conf_url', None))
 
-                # 采用重新获取版本进行比对的方式进行判断是否更新成功
+                # Check if update succeeded by comparing versions again
                 res = is_newer_version(ek_new_version, EK.version())
 
                 if res:
@@ -248,18 +248,18 @@ class HostInit:
                     report_version('ek', ek_new_version, 2)
                     
         else:
-            self.logger.warning('无法获取Execution Kit版本信息')
+            self.logger.warning('Unable to obtain Execution Kit version info')
 
-        # dmr 是否需要更新
+        # Check if DMR needs update
         dmrVersion = versionInfo.get('dmr_config')
         if dmrVersion:
             dmr_new_version = dmrVersion.get('conf_ver')
             dmr_is_new = is_newer_version(dmr_new_version, DMR.version())
             if dmr_is_new:
-                self.logger.info('dmr_config 需要更新')
+                self.logger.info('dmr_config needs update')
                 report_version('dmr_config', dmr_new_version, 1)
                 DMR.update(dmrVersion.get('conf_url', None))
-                # 采用重新获取版本进行比对的方式进行判断是否更新成功
+                # Check if update succeeded by comparing versions again
                 res = is_newer_version(dmr_new_version, DMR.version())
 
                 if res:
@@ -267,58 +267,58 @@ class HostInit:
                 else:
                     report_version('dmr_config', dmr_new_version, 2)
         else:
-            self.logger.warning('无法获取dmr_config版本信息')
+            self.logger.warning('Unable to obtain dmr_config version info')
 
 
     """
-    获取主机环境 - Windows兼容版本
+    Get host environment - Windows compatible version
     """
     def get_ip_address(self):
-        """获取本机IPv4地址"""
+        """Get local IPv4 address"""
         try:
-            # 创建socket连接来确定本机IP
+            # Create socket connection to determine local IP
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            # 连接到一个公共IP地址和端口，不需要实际连接成功
-            # 这只是为了让操作系统选择合适的网络接口
+            # Connect to a public IP address and port, no actual connection needed
+            # This just helps the system select the appropriate network interface
             s.connect(('8.8.8.8', 80))
             ip_address = s.getsockname()[0]
             s.close()
             return ip_address
         except Exception as e:
-            self.logger.error(f"获取IP地址失败: {str(e)}")
-            # 如果无法确定，返回本地回环地址
+            self.logger.error(f"Obtain IP address failed: {str(e)}")
+            # If unable to determine, return local loopback address
             return '127.0.0.1'
 
     
     """
-    获取主机唯一id
+    Get host unique ID
     """
     def _get_unified_username(self):
-        """统一用户名识别机制，避免服务模式下用户名不一致导致的冲突"""
+        """Unified username identification mechanism to avoid conflicts caused by inconsistent usernames in service mode"""
         try:
-            # 方法1：检查是否以服务模式运行
+            # Method 1: Check if running in service mode
             import os
             import sys
             import getpass
             import requests
             
-            # 检查环境变量和命令行参数判断服务模式
+            # Check environment variables and command line parameters to determine service mode
             user_domain = os.environ.get('USERDOMAIN')
             response = requests.get(f"http://127.0.0.1:8001/username", timeout=10)
             user_name = response.text.strip().replace('"', '')
 
-            return f"{user_domain.lower()}\{user_name}"
+            return f"{user_domain.lower()}\\{user_name}"
 
                 
         except Exception as e:
-            self.logger.error(f"统一用户名识别失败: {e}")
-            # 失败时回退到默认方法
+            self.logger.error(f"Unified username recognition failed: {e}")
+            # Fall back to default method on failure
             import getpass
             return getpass.getuser()
 
     def get_machine_guid(self):
         """
-        获取 Windows 系统的 MachineGuid。
+        Get MachineGuid from Windows system.
         """
         try:
             key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE,
@@ -335,7 +335,7 @@ class HostInit:
             return None
         except PermissionError:
             self.logger.error("Permission denied accessing registry. Try running as administrator.")
-            return "N/A (Error reading file)" #为了配合之前的输出
+            return "N/A (Error reading file)" # To match previous output
         except Exception as e:
             self.logger.error(f"An error occurred: {e}")
             return None

@@ -13,7 +13,7 @@ logger = get_logger(__name__)
 
 def update_app():
     """
-    更新应用程序
+    Update application
     """
     update_info = cache.get(APP_UPDATE_CACHE_KEY, {})
     if len(update_info) == 0:
@@ -26,10 +26,10 @@ def update_app():
     is_vnc = agent_state.get('vnc', False)
 
     if not is_test and not is_sut and not is_vnc:
-        # 停止websocket
+        # Stop WebSocket
         from ..utils.websocket_sync_utils import stop_websocket_sync
         stop_websocket_sync()
-        # 遍历更新信息
+        # [Iterate through] update info
 
         import time
         for name, message in update_info.items():
@@ -43,47 +43,47 @@ def update_app():
                 current_version = get_app_version(False)
                 agent_is_new = is_newer_version(version, current_version)
                 if agent_is_new:
-                    logger.info('agent 需要更新')
+                    logger.info('Agent needs update')
                     report_version('agent', version, 1)
                                   
                     try:
-                        # 延迟导入以避免循环依赖
+                        # Delay [import to avoid] loop dependency
                         from local_agent.auto_update.auto_updater import AutoUpdater
                         updater = AutoUpdater()
-                        # 异步执行更新操作
+                        # Asynchronous execute update [operation]
                         result = updater.perform_update_sync(
                             expected_md5=md5,
                             download_url=url
                         )
 
-                        # 如果程序走到了这里，说明更新脚本并没有杀死当前进程，更新操作失败
+                        # If [program reaches here], [indicates] update [script did not kill current] process, update [operation] failure
                         if not result.get('success', False):
-                            # 对更新失败的结果进行持久化存储
-                            error_message = result.get('error', '未知错误')
-                            logger.error(f"更新失败: {error_message}")
+                            # [Persistently store] update failure [result]
+                            error_message = result.get('error', 'Unknown error')
+                            logger.error(f"Update failed: {error_message}")
                             
-                            # 存储更新失败时间
+                            # [Store] update failure time
                             set_persistent_data('last_update_failure_time', current_time, 'update_status')
                             set_persistent_data('last_update_error', error_message, 'update_status')
-                            logger.info(f"已记录更新失败时间: {current_time}")
+                            logger.info(f"Recorded update failure time: {current_time}")
                             report_version('agent', version, 3)
                         
                     except Exception as e:
-                        logger.error(f"更新操作异常: {e}")
+                        logger.error(f"Update operation exception: {e}")
                         current_time = time.time()
                         set_persistent_data('last_update_failure_time', current_time, 'update_status')
                         set_persistent_data('last_update_error', str(e), 'update_status')
-                        logger.info(f"已记录更新异常时间: {current_time}")
+                        logger.info(f"Recorded update exception time: {current_time}")
                         report_version('agent', version, 3)
 
             if name == 'ek':
                 ek_is_new = is_newer_version(version, EK.version())
                 if ek_is_new:
-                    logger.info('Execution Kit 需要更新')
+                    logger.info('Execution Kit needs update')
                     report_version('ek', version, 1)
                     EK.update(url)
 
-                    # 采用重新获取版本进行比对的方式进行判断是否更新成功
+                    # [Use re]get version [to compare and] determine [if] update [was successful]
                     res = is_newer_version(version, EK.version())
 
                     if res:
@@ -91,39 +91,39 @@ def update_app():
                     else:
                         report_version('ek', version, 2)
                                 
-                # 更新结束，启动websocket
+                # Update [completed], start WebSocket
                 from ..utils.websocket_sync_utils import start_websocket_sync
                 start_websocket_sync(True)
 
             if name == 'dmr_config':
                 dmr_is_new = is_newer_version(version, DMR.version())
                 if dmr_is_new:
-                    logger.info('dmr_config 需要更新')
+                    logger.info('dmr_config needs update')
                     report_version('dmr_config', version, 1)
                     DMR.update(url)
-                    # 采用重新获取版本进行比对的方式进行判断是否更新成功
+                    # [Use re]get version [to compare and] determine [if] update [was successful]
                     res = is_newer_version(version, DMR.version())
 
                     if res:
                         report_version('dmr_config', version, 3)
                     else:
                         report_version('dmr_config', version, 2)
-                        # 更新成功，重新获取硬件信息
+                        # Update [successful], [re]get [hardware] info
                         
                         get_hardware_info()
 
 
 def get_hardware_info():
     """
-    获取硬件信息
+    Get hardware information
     """
-    logger.info("获取硬件信息-开始调用")
+    logger.info("Hardware info obtained - starting call")
     set_agent_status(sut=True)
     DMR.get_hardware_info()
-    logger.info("获取硬件信息-调用结束")
-    # 添加定时任务，15分钟后再次执行
+    logger.info("Hardware info obtained - call completed")
+    # [Add scheduled task], execute [again after] 15 minutes
     task_id = set_timeout(900, get_hardware_info)
-    # 缓存定时任务id
+    # Cache [scheduled task] id
     cache.set(HARDWARE_INFO_TASK_ID, task_id)
 
 

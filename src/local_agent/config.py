@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-配置管理模块
-集中管理所有配置项，支持环境变量和配置文件
+Configuration management module
+Centralized management of all configuration items, supporting environment variables and configuration files
 """
 
 from operator import truediv
@@ -15,7 +15,7 @@ from .utils.version_utils import get_app_version
 
 
 class Config:
-    """配置管理类"""
+    """Configuration management class"""
     
     def __init__(self):
         self._config: Dict[str, Any] = {}
@@ -24,49 +24,49 @@ class Config:
         self._validate_config()
     
     def _load_defaults(self):
-        """加载默认配置"""
-        # 基础配置
+        """Load default configuration"""
+        # Basic Configuration
         self._config.update({
-            # 应用配置
+            # Application Configuration
             'app_name': 'Local Agent Service',
-            'version': get_app_version(),  # 动态获取版本信息
+            'version': get_app_version(),  # Dynamically get version information
             'debug': True,
             
-            # FastAPI配置
+            # FastAPI Configuration
             'api_host': '0.0.0.0',
             'api_port': 8000,
             'api_reload': False,
             'api_workers': 1,
             
-            # WebSocket配置
+            # WebSocket Configuration
             'websocket_enabled': True,
             'websocket_url': 'ws://10.239.168.44:8000/api/v1/ws/host/host',
-            'websocket_reconnect_interval': 10,  # 重连间隔(秒)
-            'websocket_timeout': 30,  # 超时时间(秒)
+            'websocket_reconnect_interval': 10,  # Reconnect interval (seconds)
+            'websocket_timeout': 30,  # Timeout time (seconds)
             
-            # 日志配置
+            # Log Configuration
             'log_level': 'DEBUG',
             'log_file': 'logs/local_agent.log',
             'log_max_size': 10 * 1024 * 1024,  # 10MB
             'log_backup_count': 5,
             
-            # 保活配置
-            'keepalive_interval': 60,  # 保活检查间隔(秒)
-            'max_restart_attempts': 3,  # 最大重启尝试次数
-            'restart_delay': 5,  # 重启延迟(秒)
+            # Keep-alive Configuration
+            'keepalive_interval': 60,  # Keep-alive check interval (seconds)
+            'max_restart_attempts': 3,  # Maximum restart attempts
+            'restart_delay': 5,  # Restart delay (seconds)
             
-            # 性能配置
-            'max_memory_mb': 512,  # 最大内存使用(MB)
-            'cpu_threshold': 80,  # CPU使用率阈值(%)
-            'monitor_interval': 30,  # 监控间隔(秒)
+            # Performance Configuration
+            'max_memory_mb': 512,  # Maximum memory usage (MB)
+            'cpu_threshold': 80,  # CPU usage threshold (%)
+            'monitor_interval': 30,  # Monitoring interval (seconds)
             
-            # HTTP客户端配置
-            'http_base_url': 'http://10.239.168.44:8000/api/v1',  # HTTP请求基础URL
-            'http_timeout': 60,  # HTTP请求超时时间(秒)
+            # HTTP Client Configuration
+            'http_base_url': 'http://10.239.168.44:8000/api/v1',  # HTTP request base URL
+            'http_timeout': 60,  # HTTP request timeout time (seconds)
         })
     
     def _load_environment(self):
-        """加载环境变量配置"""
+        """Load environment variable configuration"""
         logger = get_logger(__name__)
         
         env_mappings = {
@@ -85,53 +85,53 @@ class Config:
                 try:
                     self._config[config_key] = converter(os.environ[env_var])
                 except (ValueError, TypeError) as e:
-                    logger.warning(f"环境变量 {env_var} 转换失败: {e}")
+                    logger.warning(f"environment variable {env_var} conversion failed: {e}")
     
     def _validate_config(self):
-        """验证配置有效性"""
-        # 确保端口在有效范围内
+        """Validate configuration validity"""
+        # Ensure port is within valid range
         if not (1 <= self._config['api_port'] <= 65535):
-            raise ValueError(f"端口号必须在1-65535之间: {self._config['api_port']}")
+            raise ValueError(f"API port number must be between 1-65535: {self._config['api_port']}")
         
-        # 确保日志目录存在
+        # Ensure log directory exists
         log_dir = Path(self._config['log_file']).parent
         log_dir.mkdir(parents=True, exist_ok=True)
     
     def get(self, key: str, default: Any = None) -> Any:
-        """获取配置值"""
+        """Get configuration value"""
         return self._config.get(key, default)
     
     def set(self, key: str, value: Any):
-        """设置配置值"""
+        """Set configuration value"""
         self._config[key] = value
     
     def to_dict(self) -> Dict[str, Any]:
-        """转换为字典"""
+        """Convert to dictionary"""
         return self._config.copy()
     
     def __getitem__(self, key: str) -> Any:
-        """支持字典式访问"""
+        """Support dictionary-style access"""
         return self._config[key]
     
     def __setitem__(self, key: str, value: Any):
-        """支持字典式设置"""
+        """Support dictionary-style setting"""
         self._config[key] = value
     
     def __contains__(self, key: str) -> bool:
-        """支持in操作符"""
+        """Support 'in' operator"""
         return key in self._config
 
 
-# 全局配置实例
+# Global configuration instance
 config = Config()
 
 
 def get_config() -> Config:
-    """获取全局配置实例"""
+    """Get global configuration instance"""
     return config
 
 
 def reload_config():
-    """重新加载配置"""
+    """Reload configuration"""
     global config
     config = Config()

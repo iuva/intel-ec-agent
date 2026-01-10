@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-进程守护模块 - 实现保活机制
-提供多层级监控、自动恢复和资源管理功能
+Process guardian module - Implements keep-alive mechanism
+Provides multi-level monitoring, automatic recovery, and resource management functionality
 """
 
 import asyncio
@@ -19,30 +19,30 @@ from ..logger import get_logger
 
 
 class ProcessGuardian:
-    """进程守护类 - 实现顶尖保活机制"""
+    """Process guardian class - Implements top-tier keep-alive mechanism"""
     
     def __init__(self, process_name: str, executable_path: str, working_dir: str):
         self.logger = get_logger(__name__)
         
-        # 基础配置
+        # basicConfiguration
         self.process_name = process_name
         self.executable_path = executable_path
         self.working_dir = working_dir
         
-        # 状态管理
+        # Statusmanagement
         self._process: Optional[subprocess.Popen] = None
         self._is_running = False
         self._start_time: Optional[datetime] = None
         self._restart_count = 0
         self._last_health_check = datetime.now()
         
-        # 保活配置
-        self.max_restarts_per_hour = 5  # 每小时最大重启次数
-        self.health_check_interval = 15  # 健康检查间隔(秒)
-        self.restart_delay = 3  # 重启延迟(秒)
-        self.max_memory_mb = 500  # 最大内存限制(MB)
+        # Keep-alive configuration
+        self.max_restarts_per_hour = 5  # Maximum restarts per hour
+        self.health_check_interval = 15  # Health check interval (seconds)
+        self.restart_delay = 3  # Restart delay (seconds)
+        self.max_memory_mb = 500  # Maximum memory limit (MB)
         
-        # 监控数据
+        # Monitoring data
         self._restart_history: List[datetime] = []
         self._health_stats: Dict[str, any] = {
             'memory_usage': [],
@@ -50,74 +50,74 @@ class ProcessGuardian:
             'response_time': []
         }
         
-        self.logger.info(f"进程守护初始化完成 - 目标进程: {process_name}")
+        self.logger.info(f"Process guardian initialized - target process: {process_name}")
     
     async def start(self) -> bool:
-        """启动进程守护"""
+        """Start process guardian"""
         try:
-            self.logger.info("启动进程守护...")
+            self.logger.info("Starting process guardian...")
             
-            # 启动目标进程
+            # Start target process
             if not await self._start_target_process():
                 return False
             
-            # 启动监控任务
+            # Start monitoring tasks
             self._is_running = True
             asyncio.create_task(self._monitoring_loop())
             asyncio.create_task(self._health_check_loop())
             asyncio.create_task(self._resource_optimization_loop())
             
-            self.logger.info("进程守护启动成功")
+            self.logger.info("Process guardian started successfully")
             return True
             
         except Exception as e:
-            self.logger.error(f"进程守护启动失败: {e}")
+            self.logger.error(f"Process guardian startup failed: {e}")
             return False
     
     async def stop(self) -> bool:
-        """停止进程守护"""
+        """Stop process guardian"""
         try:
-            self.logger.info("停止进程守护...")
+            self.logger.info("Stopping process guardian...")
             self._is_running = False
             
-            # 优雅停止目标进程
+            # Gracefully stop target process
             if self._process:
                 try:
-                    # 发送终止信号
+                    # Send termination signal
                     self._process.terminate()
                     
-                    # 等待进程退出
-                    for _ in range(10):  # 最多等待10秒
+                    # Wait for process to exit
+                    for _ in range(10):  # Wait up to 10 seconds
                         if self._process.poll() is not None:
                             break
                         await asyncio.sleep(1)
                     
-                    # 如果进程仍未退出，强制终止
+                    # If process still not exited, force terminate
                     if self._process.poll() is None:
                         self._process.kill()
                         
                 except Exception as e:
-                    self.logger.warning(f"停止进程时发生异常: {e}")
+                    self.logger.warning(f"Exception occurred while stopping process: {e}")
             
-            self.logger.info("进程守护已停止")
+            self.logger.info("Process guardian has stopped")
             return True
             
         except Exception as e:
-            self.logger.error(f"停止进程守护失败: {e}")
+            self.logger.error(f"Stop process guardian failed: {e}")
             return False
     
     async def _start_target_process(self) -> bool:
-        """启动目标进程"""
+        """Start target process"""
         try:
-            # 检查重启频率限制
+            # Check restart frequency limit
             if not self._check_restart_limit():
-                self.logger.error("重启频率过高，暂停重启")
+                self.logger.error("Restart frequency too high, pausing restart")
                 return False
             
-            # 清理旧进程（如果存在）
+            # Clean up old process (if exists)
             await self._cleanup_orphaned_processes()
             
-            # 启动新进程
+            # Start new process
             self._process = subprocess.Popen(
                 [sys.executable, self.executable_path],
                 cwd=self.working_dir,
@@ -130,82 +130,82 @@ class ProcessGuardian:
             self._restart_count += 1
             self._restart_history.append(datetime.now())
             
-            # 启动输出监控
+            # Start output monitoring
             asyncio.create_task(self._monitor_process_output())
             
-            self.logger.info(f"目标进程启动成功 (PID: {self._process.pid})")
+            self.logger.info(f"Target process started successfully (PID: {self._process.pid})")
             return True
             
         except Exception as e:
-            self.logger.error(f"启动目标进程失败: {e}")
+            self.logger.error(f"Start target process failed: {e}")
             return False
     
     async def _monitoring_loop(self):
-        """进程监控循环"""
+        """Process monitoring loop"""
         while self._is_running:
             try:
-                # 检查进程状态
+                # Check process status
                 if self._process and self._process.poll() is not None:
-                    self.logger.warning("目标进程已退出，准备重启...")
+                    self.logger.warning("Target process has exited, preparing to restart...")
                     
-                    # 等待一段时间后重启
+                    # Wait for a period of time before restart
                     await asyncio.sleep(self.restart_delay)
                     
-                    # 重启进程
+                    # Restart process
                     if not await self._start_target_process():
-                        self.logger.error("重启目标进程失败")
+                        self.logger.error("Restart target process failed")
                         break
                 
-                # 检查资源使用情况
+                # Check resource usage
                 await self._check_resource_usage()
                 
-                # 每5秒检查一次
+                # Check every 5 seconds
                 await asyncio.sleep(5)
                 
             except Exception as e:
-                self.logger.error(f"监控循环异常: {e}")
+                self.logger.error(f"Monitoring loop exception: {e}")
                 await asyncio.sleep(5)
     
     async def _health_check_loop(self):
-        """健康检查循环"""
+        """Health check loop"""
         while self._is_running:
             try:
-                # 执行健康检查
+                # Execute health check
                 health_status = await self._perform_health_check()
                 
                 if not health_status['healthy']:
-                    self.logger.warning("健康检查失败，准备恢复...")
+                    self.logger.warning("Health check failed, preparing to recover...")
                     await self._recover_from_failure()
                 
-                # 更新最后检查时间
+                # Update last check time
                 self._last_health_check = datetime.now()
                 
-                # 每30秒检查一次
+                # Check every 30 seconds
                 await asyncio.sleep(30)
                 
             except Exception as e:
-                self.logger.error(f"健康检查循环异常: {e}")
+                self.logger.error(f"Health check loop exception: {e}")
                 await asyncio.sleep(30)
     
     async def _resource_optimization_loop(self):
-        """资源优化循环"""
+        """Resource optimization loop"""
         while self._is_running:
             try:
-                # 优化内存使用
+                # Optimize memory usage
                 await self._optimize_memory_usage()
                 
-                # 清理临时文件
+                # Clean up temporary files
                 await self._cleanup_temporary_files()
                 
-                # 每60秒执行一次优化
+                # Execute optimization every 60 seconds
                 await asyncio.sleep(60)
                 
             except Exception as e:
-                self.logger.error(f"资源优化循环异常: {e}")
+                self.logger.error(f"Resource optimization loop exception: {e}")
                 await asyncio.sleep(60)
     
     async def _perform_health_check(self) -> Dict[str, any]:
-        """执行健康检查"""
+        """Execute health check"""
         health_status = {
             'healthy': True,
             'details': {},
@@ -213,43 +213,43 @@ class ProcessGuardian:
         }
         
         try:
-            # 检查进程状态
+            # Check process status
             if not self._process or self._process.poll() is not None:
                 health_status['healthy'] = False
                 health_status['details']['process'] = 'not_running'
                 return health_status
             
-            # 检查API接口响应
+            # Check API interface response
             api_healthy = await self._check_api_health()
             health_status['details']['api'] = api_healthy
             if not api_healthy:
                 health_status['healthy'] = False
             
-            # 检查内存使用
+            # Check memory usage
             memory_info = await self._get_memory_usage()
             health_status['details']['memory'] = memory_info
-            if memory_info['percent'] > 80:  # 内存使用超过80%
+            if memory_info['percent'] > 80:  # Memory usage exceeds 80%
                 health_status['healthy'] = False
             
-            # 检查响应时间
+            # Check response time
             response_time = await self._measure_response_time()
             health_status['details']['response_time'] = response_time
-            if response_time > 5000:  # 响应时间超过5秒
+            if response_time > 5000:  # Response time exceeds 5 seconds
                 health_status['healthy'] = False
             
         except Exception as e:
-            self.logger.error(f"健康检查异常: {e}")
+            self.logger.error(f"Health check exception: {e}")
             health_status['healthy'] = False
             health_status['details']['error'] = str(e)
         
         return health_status
     
     async def _check_api_health(self) -> bool:
-        """检查API接口健康状态"""
+        """Check API interface health status"""
         try:
             import aiohttp
             
-            # 获取配置中的API端口
+            # Get API port from configuration
             api_host = self.config.get('api_host', 'localhost')
             api_port = self.config.get('api_port', 8000)
             
@@ -260,7 +260,7 @@ class ProcessGuardian:
             return False
     
     async def _get_memory_usage(self) -> Dict[str, float]:
-        """获取内存使用情况"""
+        """Get memory usage"""
         try:
             if self._process:
                 process = psutil.Process(self._process.pid)
@@ -276,12 +276,12 @@ class ProcessGuardian:
         return {'rss_mb': 0, 'percent': 0}
     
     async def _measure_response_time(self) -> float:
-        """测量API响应时间"""
+        """Measure API response time"""
         try:
             import aiohttp
             import time
             
-            # 获取配置中的API端口
+            # Get API port from configuration
             api_host = self.config.get('api_host', 'localhost')
             api_port = self.config.get('api_port', 8000)
             
@@ -290,160 +290,160 @@ class ProcessGuardian:
             async with aiohttp.ClientSession() as session:
                 async with session.get(f'http://{api_host}:{api_port}/health', timeout=5) as response:
                     if response.status == 200:
-                        return (time.time() - start_time) * 1000  # 转换为毫秒
+                        return (time.time() - start_time) * 1000  # Convert to milliseconds
         except:
             pass
         
-        return float('inf')  # 返回无限大表示失败
+        return float('inf')  # Return infinity to indicate failure
     
     async def _recover_from_failure(self):
-        """从故障中恢复"""
+        """Recover from failure"""
         try:
-            self.logger.info("执行故障恢复流程...")
+            self.logger.info("Executing fault recovery process...")
             
-            # 1. 优雅停止当前进程
+            # 1. Gracefully stop current process
             await self.stop()
             
-            # 2. 清理资源
+            # 2. Clean up resources
             await self._cleanup_resources()
             
-            # 3. 等待恢复冷却
+            # 3. Wait for recovery cooldown
             await asyncio.sleep(self.restart_delay)
             
-            # 4. 重新启动
+            # 4. Restart
             await self._start_target_process()
             
-            self.logger.info("故障恢复完成")
+            self.logger.info("Fault recovery completed")
             
         except Exception as e:
-            self.logger.error(f"故障恢复失败: {e}")
+            self.logger.error(f"Fault recovery failed: {e}")
     
     def _check_restart_limit(self) -> bool:
-        """检查重启频率限制"""
+        """Check restart frequency limit"""
         now = datetime.now()
         hour_ago = now - timedelta(hours=1)
         
-        # 统计过去一小时内的重启次数
+        # Count restart times in the past hour
         recent_restarts = [rt for rt in self._restart_history if rt > hour_ago]
         
         if len(recent_restarts) >= self.max_restarts_per_hour:
-            self.logger.error(f"重启频率过高: {len(recent_restarts)}次/小时")
+            self.logger.error(f"Restart frequency too high: {len(recent_restarts)} times/hour")
             return False
         
         return True
     
     async def _cleanup_orphaned_processes(self):
-        """清理孤儿进程"""
+        """Clean up orphaned processes"""
         try:
             for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
                 try:
-                    # 查找同名的孤儿进程
+                    # Find orphaned processes with the same name
                     if (proc.info['name'] and 
                         self.process_name.lower() in proc.info['name'].lower() and
                         proc.pid != os.getpid() and
                         (not self._process or proc.pid != self._process.pid)):
                         
-                        self.logger.warning(f"发现孤儿进程 PID: {proc.pid}，正在清理...")
+                        self.logger.warning(f"Found orphaned process PID: {proc.pid}, cleaning up...")
                         proc.terminate()
                         
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     pass
                     
         except Exception as e:
-            self.logger.warning(f"清理孤儿进程时发生异常: {e}")
+            self.logger.warning(f"Exception occurred while cleaning up orphaned processes: {e}")
     
     async def _check_resource_usage(self):
-        """检查资源使用情况"""
+        """Check resource usage"""
         try:
             if self._process:
                 process = psutil.Process(self._process.pid)
                 
-                # 检查内存使用
+                # Check memory usage
                 memory_mb = process.memory_info().rss / 1024 / 1024
                 if memory_mb > self.max_memory_mb:
-                    self.logger.warning(f"内存使用过高: {memory_mb:.1f}MB，超过限制 {self.max_memory_mb}MB")
+                    self.logger.warning(f"Memory usage too high: {memory_mb:.1f}MB, exceeds limit {self.max_memory_mb}MB")
                     
-                    # 触发内存优化
+                    # Trigger memory optimization
                     await self._optimize_memory_usage()
                 
-                # 检查CPU使用
+                # Check CPU usage
                 cpu_percent = process.cpu_percent()
-                if cpu_percent > 80:  # CPU使用超过80%
-                    self.logger.warning(f"CPU使用过高: {cpu_percent}%")
+                if cpu_percent > 80:  # CPU usage exceeds 80%
+                    self.logger.warning(f"CPU usage too high: {cpu_percent}%")
                     
         except Exception as e:
-            self.logger.warning(f"检查资源使用异常: {e}")
+            self.logger.warning(f"Exception occurred while checking resource usage: {e}")
     
     async def _optimize_memory_usage(self):
-        """优化内存使用"""
+        """Optimize memory usage"""
         try:
-            # 强制垃圾回收
+            # Force garbage collection
             import gc
             gc.collect()
             
-            # 清理缓存
+            # Clean up cache
             import sys
             if hasattr(sys, 'getobjects'):
-                # 清理循环引用
-                gc.collect(2)  # 深度清理
+                # Clean up loop references
+                gc.collect(2)  # Deep cleanup
             
-            self.logger.debug("内存优化完成")
+            self.logger.debug("Memory optimization completed")
             
         except Exception as e:
-            self.logger.warning(f"内存优化异常: {e}")
+            self.logger.warning(f"Memory optimization exception: {e}")
     
     async def _cleanup_temporary_files(self):
-        """清理临时文件"""
+        """Clean up temporary files"""
         try:
             import tempfile
             import glob
             
-            # 清理临时目录中的旧文件
+            # Clean up old files in temporary directory
             temp_dir = tempfile.gettempdir()
             pattern = os.path.join(temp_dir, f"{self.process_name}_*")
             
             for temp_file in glob.glob(pattern):
                 try:
                     if os.path.isfile(temp_file):
-                        # 只删除超过1小时的文件
+                        # Only delete files older than 1 hour
                         file_age = datetime.now() - datetime.fromtimestamp(os.path.getmtime(temp_file))
                         if file_age.total_seconds() > 3600:
                             os.remove(temp_file)
-                            self.logger.debug(f"清理临时文件: {temp_file}")
+                            self.logger.debug(f"Cleaning up temporary file: {temp_file}")
                 except:
                     pass
                     
         except Exception as e:
-            self.logger.warning(f"清理临时文件异常: {e}")
+            self.logger.warning(f"Exception occurred while cleaning up temporary files: {e}")
     
     async def _cleanup_resources(self):
-        """清理资源"""
+        """Clean up resources"""
         await self._cleanup_temporary_files()
         await self._cleanup_orphaned_processes()
     
     async def _monitor_process_output(self):
-        """监控进程输出"""
+        """Monitor process output"""
         if not self._process:
             return
         
         try:
-            # 监控标准输出
+            # Monitor standard output
             if self._process.stdout:
                 for line in iter(self._process.stdout.readline, b''):
                     if line:
-                        self.logger.info(f"[进程输出] {line.decode().strip()}")
+                        self.logger.info(f"[Process Output] {line.decode().strip()}")
             
-            # 监控标准错误
+            # Monitor standard error
             if self._process.stderr:
                 for line in iter(self._process.stderr.readline, b''):
                     if line:
-                        self.logger.error(f"[进程错误] {line.decode().strip()}")
+                        self.logger.error(f"[Process Error] {line.decode().strip()}")
                         
         except Exception as e:
-            self.logger.warning(f"监控进程输出异常: {e}")
+            self.logger.warning(f"Exception occurred while monitoring process output: {e}")
     
     def get_status(self) -> Dict[str, any]:
-        """获取守护状态"""
+        """Get guardian status"""
         return {
             'running': self._is_running,
             'process_pid': self._process.pid if self._process else None,
@@ -454,5 +454,5 @@ class ProcessGuardian:
 
 
 def create_process_guardian(process_name: str, executable_path: str, working_dir: str) -> ProcessGuardian:
-    """创建进程守护实例"""
+    """Create process guardian instance"""
     return ProcessGuardian(process_name, executable_path, working_dir)

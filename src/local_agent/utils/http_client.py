@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-网络请求封装
-单例模式，支持自动URL拼接和token管理
+Network request encapsulation
+Singleton pattern, supports automatic URL concatenation and token management
 
-使用示例：
-1. 基本使用：
+Usage examples:
+1. Basic usage:
    from src.local_agent.core.http_client import http_client
    result = http_client.get("/api/users", isToken=True)
 
-2. 带数据请求：
-   data = {"name": "张三", "age": 25}
+2. Request with data:
+   data = {"name": "Zhang San", "age": 25}
    result = http_client.post("/api/users", data=data, isToken=True)
 
-3. 完整URL请求：
+3. Full URL request:
    result = http_client.get("https://api.example.com/data")
 """
 
@@ -31,124 +31,124 @@ from ..core.constants import AUTHORIZATION_CACHE_KEY
 
 class HttpClient:
     """
-    网络请求客户端
-    单例模式，支持自动URL拼接和token管理
+    Network request client
+    Singleton pattern, supports automatic URL concatenation and token management
     """
     
     def __init__(self):
-        """初始化HTTP客户端"""
+        """Initialize HTTP client"""
         self.config = get_config()
         self.logger = get_logger(__name__)
         
-        # 获取基础URL配置
+        # Get basic URL configuration
         self.base_url = self.config.get('http_base_url', '')
         self.timeout = self.config.get('http_timeout', 30)
         
-        # 创建会话对象
+        # Create session object
         self.session = requests.Session()
         
-        # 设置默认请求头
+        # Set up default request headers
         self.session.headers.update({
             'Content-Type': 'application/json',
             'User-Agent': f'LocalAgent/1.0.0'
         })
         
-        self.logger.info(f"HTTP客户端初始化完成，基础URL: {self.base_url}")
+        self.logger.info(f"HTTP client initialized, base URL: {self.base_url}")
     
     def _build_file_url(self, url: str) -> str:
-        """构建完整下载URL
+        """Build complete download URL
         
         Args:
-            url: 下载URL，可能是完整URL或相对路径
+            url: Download URL, which may be a complete URL or relative path
             
         Returns:
-            str: 完整下载URL
+            str: Complete download URL
         """
-        # 处理空URL
+        # Handle empty URL
         if not url:
             return None
 
-        # 如果已经是完整URL，直接返回
+        # If already a complete URL, return directly
         if url.startswith(('http://', 'https://')):
             return url
         
-        # 使用HTTP客户端的URL构建逻辑
-        # 如果URL是文件名，构建完整路径
+        # Use HTTPClient's URL construction logic
+        # If URL is a filename, build complete path
         if '/' not in url and '.' in url:
-            # 假设是文件名，构建完整API路径
+            # Assume it's a filename, build complete API path
             return self._build_url(f"/host/file/{url}")
         else:
-            # 使用HTTP客户端的URL构建
+            # Use HTTPClient's URL construction
             return self._build_url(url)
 
 
     def _build_url(self, url: str) -> str:
         """
-        构建完整URL
+        Build complete URL
         
         Args:
-            url: 请求URL，如果以http://或https://开头则直接使用，否则拼接基础URL
+            url: Request URL, if it starts with http:// or https://, use it directly, otherwise concatenate with base URL
             
         Returns:
-            str: 完整URL
+            str: Complete URL
         """
         if url.startswith(('http://', 'https://')):
-            # 已经是完整URL，直接返回
+            # Already a complete URL, return directly
             return url
         
         if self.base_url:
-            # 拼接基础URL，确保正确处理路径分隔符
+            # Concatenate basic URL, ensure correct path separator handling
             base = self.base_url.rstrip('/')
             path = url.lstrip('/')
             
-            # 检查路径是否已经包含基础URL中的API路径，避免重复
+            # Check if path already contains API path from basic URL to avoid duplication
             base_api_path = '/api/v1'
             if base.endswith(base_api_path) and path.startswith(base_api_path.lstrip('/')):
-                # 如果路径已经包含API路径，则移除重复部分
+                # If path already contains API path, remove duplicate part
                 path = path[len(base_api_path.lstrip('/')):].lstrip('/')
             
             return f"{base}/{path}"
         else:
-            # 没有配置基础URL，返回原URL（可能是不完整的路径）
-            self.logger.warning(f"未配置基础URL，使用相对路径: {url}")
+            # No basic URL configured, return original URL (may be incomplete path)
+            self.logger.warning(f"Base URL not configured, using relative path: {url}")
             return url
     
     def _get_token(self) -> Optional[str]:
         """
-        从全局缓存获取token
+        Get token from global cache
         
         Returns:
-            Optional[str]: token值，如果不存在则返回None
+            Optional[str]: Token value, returns None if not found
         """
         token = cache.get(AUTHORIZATION_CACHE_KEY)
         if token:
-            self.logger.debug("从缓存获取到token")
+            self.logger.debug("Token obtained from cache")
             return token
         else:
-            self.logger.warning(f"缓存中未找到{AUTHORIZATION_CACHE_KEY} token")
+            self.logger.warning(f"Token {AUTHORIZATION_CACHE_KEY} not found in cache")
             return None
     
     def _build_headers(self, is_token: bool = True, headers: Optional[Dict[str, str]] = None) -> Dict[str, str]:
         """
-        构建请求头
+        Build request headers
         
         Args:
-            is_token: 是否携带token
-            headers: 自定义请求头
+            is_token: Whether to include token
+            headers: Custom request headers
             
         Returns:
-            Dict[str, str]: 请求头字典
+            Dict[str, str]: Request headers dictionary
         """
-        # 复制默认请求头
+        # Copy default request headers
         request_headers = self.session.headers.copy()
         
-        # 添加token
+        # Add token
         if is_token:
             token = self._get_token()
             if token:
                 request_headers['Authorization'] = f'Bearer {token}'
         
-        # 添加自定义请求头
+        # Add custom request headers
         if headers:
             request_headers.update(headers)
         
@@ -156,16 +156,16 @@ class HttpClient:
     
     def _handle_response(self, response: requests.Response) -> Dict[str, Any]:
         """
-        处理响应
+        Handle response
         
         Args:
-            response: 响应对象
+            response: Response object
             
         Returns:
-            Dict[str, Any]: 响应数据
+            Dict[str, Any]: Response data
         """
         try:
-            # 尝试解析JSON响应
+            # Try to parse JSON response
             if response.headers.get('Content-Type', '').startswith('application/json'):
                 result = response.json()
             else:
@@ -174,13 +174,13 @@ class HttpClient:
                     'content': response.content
                 }
         except (json.JSONDecodeError, ValueError):
-            # 非JSON响应
+            # Non-JSON response
             result = {
                 'text': response.text,
                 'content': response.content
             }
         
-        # 构建标准响应格式
+        # Build standard response format
         return {
             'status_code': response.status_code,
             'success': 200 <= response.status_code < 300,
@@ -191,214 +191,214 @@ class HttpClient:
     
     def _handle_auth_refresh(self) -> bool:
         """
-        处理鉴权刷新逻辑
+        Handle authentication refresh logic
         
         Returns:
-            bool: 是否成功刷新token
+            bool: Whether token refresh was successful
         """
-        self.logger.info("检测到token无效或过期，开始刷新token...")
+        self.logger.info("Detected token invalid or expired, starting token refresh...")
         
-        # 延迟导入以避免循环导入问题
+        # Delay import to avoid circular import issues
         from ..core.auth import refresh_token, auth_token
         
-        # 先尝试刷新token
+        # First try to refresh token
         refresh_result = refresh_token()
         if refresh_result:
-            self.logger.info("token刷新成功")
+            self.logger.info("Token refresh successful")
             return True
         
-        # 如果刷新失败，尝试重新获取token
-        self.logger.warning("token刷新失败，尝试重新获取token...")
+        # If refresh fails, try to re-obtain token
+        self.logger.warning("Token refresh failed, attempting to re-obtain token...")
         auth_result = auth_token()
         if auth_result:
-            self.logger.info("token重新获取成功")
+            self.logger.info("Token re-obtained successfully")
             return True
         
-        self.logger.error("token刷新和重新获取均失败，鉴权无效")
+        self.logger.error("Token refresh and re-obtain both failed, authentication invalid")
         return False
     
     def _request(self, method: str, url: str, data: Optional[Any] = None, 
                  is_token: bool = True, headers: Optional[Dict[str, str]] = None, 
                  **kwargs) -> Dict[str, Any]:
         """
-        执行HTTP请求，支持自动鉴权刷新
+        Execute HTTP request with automatic authentication refresh
         
         Args:
-            method: HTTP方法（GET, POST, PUT, DELETE等）
-            url: 请求URL
-            data: 请求数据
-            is_token: 是否携带token
-            headers: 自定义请求头
-            **kwargs: 其他请求参数
+            method: HTTP method (GET, POST, PUT, DELETE, etc.)
+            url: Request URL
+            data: Request data
+            is_token: Whether to include token
+            headers: Custom request headers
+            **kwargs: Other request parameters
             
         Returns:
-            Dict[str, Any]: 响应数据
+            Dict[str, Any]: Response data
         """
-        # 检查是否需要携带token但token不存在
+        # Check if token is required but not present
         if is_token and not cache.get(AUTHORIZATION_CACHE_KEY):
-            self.logger.warning("请求需要token但缓存中不存在，尝试获取token...")
+            self.logger.warning("Token required but not found in cache, attempting to obtain token...")
             if not self._handle_auth_refresh():
                 return {
                     'status_code': 401,
                     'success': False,
                     'data': {
-                        'error': '鉴权失败，无法获取有效token',
+                        'error': 'Authentication failed, unable to obtain valid token',
                         'code': 401
                     },
                     'url': url
                 }
         
-        # 构建完整URL
+        # Build complete URL
         full_url = self._build_url(url)
         
-        # 构建请求头
+        # Build request headers
         request_headers = self._build_headers(is_token, headers)
         
-        # 准备请求参数
+        # Prepare request parameters
         request_kwargs = {
             'timeout': kwargs.pop('timeout', self.timeout),
             'headers': request_headers
         }
         
-        # 处理请求数据
+        # Handle request data
         if data is not None:
             if request_headers.get('Content-Type') == 'application/json':
                 request_kwargs['json'] = data
             else:
                 request_kwargs['data'] = data
         
-        # 添加其他参数（排除内部使用的参数）
-        # 只传递requests库支持的参数
+        # Add other parameters (exclude internally used parameters)
+        # Only pass parameters supported by requests library
         supported_kwargs = {}
         for key, value in kwargs.items():
-            # 排除内部参数，只传递requests支持的参数
+            # Exclude internal parameters, only pass requests-supported parameters
             if key not in ['is_token']:
                 supported_kwargs[key] = value
         
         request_kwargs.update(supported_kwargs)
         
-        self.logger.debug(f"发送{method}请求: {full_url}")
+        self.logger.debug(f"Sending {method} request: {full_url}")
         
         try:
-            # 发送请求
+            # Send request
             response = self.session.request(method, full_url, **request_kwargs)
 
-            # 响应信息
-            self.logger.debug(f"请求地址：{full_url}\n请求体：{data}\n请求头：{request_headers}\n响应信息：{response.text}")
+            # Response info
+            self.logger.debug(f"Request URL: {full_url}\nRequest body: {data}\nRequest headers: {request_headers}\nResponse info: {response.text}")
 
-            # 处理响应
+            # Handle response
             result = self._handle_response(response)
             
-            # 检查是否为401错误，如果是则尝试刷新token并重试
+            # Check if it's a 401 error, if so try to refresh token and retry
             if result['status_code'] == 401 and is_token:
-                self.logger.warning("请求返回401错误，token可能已过期，尝试刷新token...")
+                self.logger.warning("Request returned 401 error, token may be expired, attempting to refresh token...")
                 
                 if self._handle_auth_refresh():
-                    # 重新构建请求头（使用新的token）
+                    # Rebuild request headers (using new token)
                     request_headers = self._build_headers(is_token, headers)
                     request_kwargs['headers'] = request_headers
                     
-                    self.logger.info("token刷新成功，重新发送请求...")
+                    self.logger.info("Token refresh successful, resending request...")
                     
-                    # 重新发送请求
+                    # Resend request
                     response = self.session.request(method, full_url, **request_kwargs)
                     result = self._handle_response(response)
                     
                     if result['success']:
-                        self.logger.info("重新请求成功")
+                        self.logger.info("Retry request successful")
                     else:
-                        self.logger.error("重新请求失败")
+                        self.logger.error("Retry request failed")
                 else:
-                    self.logger.error("token刷新失败，无法重新请求")
+                    self.logger.error("Token refresh failed, unable to retry request")
             
             if result['success']:
-                self.logger.debug(f"{method}请求成功: {full_url}")
+                self.logger.debug(f"{method} request successful: {full_url}")
             else:
-                self.logger.warning(f"{method}请求失败: {full_url}, 状态码: {response.status_code}")
+                self.logger.warning(f"{method} request failed: {full_url}, status code: {response.status_code}")
             
             return result
             
         except requests.exceptions.Timeout:
-            self.logger.error(f"{method}请求超时: {full_url}")
+            self.logger.error(f"{method} request timeout: {full_url}")
             
-            # 无限重试逻辑：超时后等待2分钟再次请求
+            # Infinite retry logic: Wait 2 minutes after timeout and request again
             import time
-            retry_delay = 120  # 2分钟
+            retry_delay = 120  # 2 minutes
             
             while True:
-                self.logger.warning(f"请求超时，等待{retry_delay}秒后重试: {full_url}")
+                self.logger.warning(f"Request timeout, waiting for {retry_delay} seconds before retry: {full_url}")
                 time.sleep(retry_delay)
                 
                 try:
-                    self.logger.info(f"开始重试请求: {full_url}")
+                    self.logger.info(f"Starting retry request: {full_url}")
                     
                     response = self.session.request(method, full_url, **request_kwargs)
                     
-                    # 处理响应
-                    result = self._handle_response(response, method, full_url)
+                    # Handle response
+                    result = self._handle_response(response)
                     
-                    # 如果请求成功，返回结果
+                    # If request succeeds, return result
                     if result['success']:
-                        self.logger.info(f"重试请求成功: {full_url}")
+                        self.logger.info(f"Retry request successful: {full_url}")
                         return result
                     
-                    # 如果请求失败但不是超时，返回错误
+                    # If request fails but not timeout, return error
                     if result.get('status_code') != 408:
-                        self.logger.warning(f"重试请求失败（非超时错误）: {full_url}")
+                        self.logger.warning(f"Retry request failed (non-timeout error): {full_url}")
                         return result
                     
-                    # 如果是超时错误，继续重试循环
-                    self.logger.error(f"重试请求仍然超时: {full_url}")
+                    # If it's timeout error, continue retry loop
+                    self.logger.error(f"Retry request still timeout: {full_url}")
                     
                 except requests.exceptions.Timeout:
-                    # 重试时仍然超时，继续循环
-                    self.logger.error(f"重试请求超时: {full_url}")
+                    # Still timeout during retry, continue loop
+                    self.logger.error(f"Retry request timeout: {full_url}")
                     continue
                     
                 except Exception as e:
-                    # 其他异常，返回错误
-                    self.logger.error(f"重试请求异常: {full_url}, 错误: {e}")
+                    # Other exceptions, return error
+                    self.logger.error(f"Retry request exception: {full_url}, error: {e}")
                     return {
                         'status_code': 500,
                         'success': False,
-                        'data': {'error': f'重试请求异常: {str(e)}'},
+                        'data': {'error': f'Retry request exception: {str(e)}'},
                         'url': full_url
                     }
             
         except requests.exceptions.ConnectionError:
-            self.logger.error(f"{method}连接错误: {full_url}")
+            self.logger.error(f"{method} connection error: {full_url}")
             return {
                 'status_code': 503,
                 'success': False,
-                'data': {'error': '连接错误'},
+                'data': {'error': 'Connection error'},
                 'url': full_url
             }
             
         except requests.exceptions.RequestException as e:
-            self.logger.error(f"{method}请求异常: {full_url}, 错误: {e}")
+            self.logger.error(f"{method} request exception: {full_url}, error: {e}")
             return {
                 'status_code': 500,
                 'success': False,
-                'data': {'error': f'请求异常: {str(e)}'},
+                'data': {'error': f'Request exception: {str(e)}'},
                 'url': full_url
             }
     
     def get(self, url: str, data: Optional[Any] = None, is_token: bool = True, 
             headers: Optional[Dict[str, str]] = None, **kwargs) -> Dict[str, Any]:
         """
-        GET请求
+        GET request
         
         Args:
-            url: 请求URL
-            data: 查询参数（将转换为URL参数）
-            is_token: 是否携带token
-            headers: 自定义请求头
-            **kwargs: 其他请求参数
+            url: Request URL
+            data: Query parameters (will be converted to URL parameters)
+            is_token: Whether to include token
+            headers: Custom request headers
+            **kwargs: Other request parameters
             
         Returns:
-            Dict[str, Any]: 响应数据
+            Dict[str, Any]: Response data
         """
-        # 对于GET请求，data作为查询参数
+        # For GET request, data as query parameters
         if data is not None:
             kwargs['params'] = data
         
@@ -407,101 +407,101 @@ class HttpClient:
     def post(self, url: str, data: Optional[Any] = None, is_token: bool = True, 
              headers: Optional[Dict[str, str]] = None, **kwargs) -> Dict[str, Any]:
         """
-        POST请求
+        POST request
         
         Args:
-            url: 请求URL
-            data: 请求体数据
-            is_token: 是否携带token
-            headers: 自定义请求头
-            **kwargs: 其他请求参数
+            url: Request URL
+            data: Request body data
+            is_token: Whether to include token
+            headers: Custom request headers
+            **kwargs: Other request parameters
             
         Returns:
-            Dict[str, Any]: 响应数据
+            Dict[str, Any]: Response data
         """
         return self._request('POST', url, data=data, is_token=is_token, headers=headers, **kwargs)
     
     def put(self, url: str, data: Optional[Any] = None, is_token: bool = True, 
             headers: Optional[Dict[str, str]] = None, **kwargs) -> Dict[str, Any]:
         """
-        PUT请求
+        PUT request
         
         Args:
-            url: 请求URL
-            data: 请求体数据
-            is_token: 是否携带token
-            headers: 自定义请求头
-            **kwargs: 其他请求参数
+            url: Request URL
+            data: Request body data
+            is_token: Whether to include token
+            headers: Custom request headers
+            **kwargs: Other request parameters
             
         Returns:
-            Dict[str, Any]: 响应数据
+            Dict[str, Any]: Response data
         """
         return self._request('PUT', url, data=data, is_token=is_token, headers=headers, **kwargs)
     
     def delete(self, url: str, data: Optional[Any] = None, is_token: bool = True, 
                headers: Optional[Dict[str, str]] = None, **kwargs) -> Dict[str, Any]:
         """
-        DELETE请求
+        DELETE request
         
         Args:
-            url: 请求URL
-            data: 请求体数据
-            is_token: 是否携带token
-            headers: 自定义请求头
-            **kwargs: 其他请求参数
+            url: Request URL
+            data: Request body data
+            is_token: Whether to include token
+            headers: Custom request headers
+            **kwargs: Other request parameters
             
         Returns:
-            Dict[str, Any]: 响应数据
+            Dict[str, Any]: Response data
         """
         return self._request('DELETE', url, data=data, is_token=is_token, headers=headers, **kwargs)
     
     def set_base_url(self, base_url: str) -> None:
         """
-        设置基础URL
+        Set base URL
         
         Args:
-            base_url: 基础URL
+            base_url: Base URL
         """
-        self.base_url = base_url.rstrip('/') + '/'  # 确保以斜杠结尾
-        self.logger.info(f"设置基础URL: {self.base_url}")
+        self.base_url = base_url.rstrip('/') + '/'  # Ensure ends with slash
+        self.logger.info(f"Set base URL: {self.base_url}")
     
     def set_timeout(self, timeout: int) -> None:
         """
-        设置请求超时时间
+        Set request timeout
         
         Args:
-            timeout: 超时时间（秒）
+            timeout: Timeout in seconds
         """
         self.timeout = timeout
-        self.logger.info(f"设置请求超时: {timeout}秒")
+        self.logger.info(f"Set request timeout: {timeout} seconds")
     
     def set_default_headers(self, headers: Dict[str, str]) -> None:
         """
-        设置默认请求头
+        Set default request headers
         
         Args:
-            headers: 请求头字典
+            headers: Headers dictionary
         """
         self.session.headers.update(headers)
-        self.logger.info(f"更新默认请求头")
+        self.logger.info(f"Updated default headers")
     
     def close(self) -> None:
-        """关闭HTTP会话"""
+        """Close HTTP session"""
         self.session.close()
-        self.logger.info("HTTP会话已关闭")
+        self.logger.info("HTTP session closed")
 
 
-# 单例模式实现
+# Singleton pattern implementation
 _http_client_instance = None
 _http_client_lock = threading.RLock()
 
 
 def get_http_client() -> HttpClient:
     """
-    获取HTTP客户端实例（单例模式）
+    Get HTTP client instance (singleton pattern)
     
     Returns:
-        HttpClient: HTTP客户端实例
+        HttpClient: HTTP client instance
     """
     global _http_client_instance
     with _http_client_lock:
@@ -510,45 +510,45 @@ def get_http_client() -> HttpClient:
         return _http_client_instance
 
 
-# 提供便捷的全局实例
+# Provide convenient global instance
 http_client = get_http_client()
 
 
-# 便捷函数，可以直接导入使用
+# Convenience functions that can be directly imported and used
 def http_get(url: str, data: Optional[Any] = None, is_token: bool = True, 
             headers: Optional[Dict[str, str]] = None, **kwargs) -> Dict[str, Any]:
-    """便捷函数：GET请求"""
+    """Convenience function: GET request"""
     return http_client.get(url, data, is_token, headers, **kwargs)
 
 
 def http_post(url: str, data: Optional[Any] = None, is_token: bool = True, 
              headers: Optional[Dict[str, str]] = None, **kwargs) -> Dict[str, Any]:
-    """便捷函数：POST请求"""
+    """Convenience function: POST request"""
     return http_client.post(url, data, is_token, headers, **kwargs)
 
 
 def http_put(url: str, data: Optional[Any] = None, is_token: bool = True, 
             headers: Optional[Dict[str, str]] = None, **kwargs) -> Dict[str, Any]:
-    """便捷函数：PUT请求"""
+    """Convenience function: PUT request"""
     return http_client.put(url, data, is_token, headers, **kwargs)
 
 
 def http_delete(url: str, data: Optional[Any] = None, is_token: bool = False, 
                headers: Optional[Dict[str, str]] = None, **kwargs) -> Dict[str, Any]:
-    """便捷函数：DELETE请求"""
+    """Convenience function: DELETE request"""
     return http_client.delete(url, data, is_token, headers, **kwargs)
 
 
 def set_http_base_url(base_url: str) -> None:
-    """便捷函数：设置基础URL"""
+    """Convenience function: set base URL"""
     http_client.set_base_url(base_url)
 
 
 def set_http_timeout(timeout: int) -> None:
-    """便捷函数：设置超时时间"""
+    """Convenience function: set timeout"""
     http_client.set_timeout(timeout)
 
 
 def close_http_client() -> None:
-    """便捷函数：关闭HTTP客户端"""
+    """Convenience function: close HTTP client"""
     http_client.close()

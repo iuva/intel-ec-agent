@@ -2,32 +2,32 @@
 chcp 65001 >nul
 
 echo ========================================
-echo  本地代理服务卸载脚本
+echo  Local Agent Service Uninstallation Script
 echo ========================================
 
 set SERVICE_NAME=LocalAgentService
 
-:: 检查服务是否存在
+:: Check if service exists
 nssm status %SERVICE_NAME% >nul 2>&1
 if %errorlevel% neq 0 (
-    echo ℹ️  服务 %SERVICE_NAME% 不存在
+    echo ℹ️  Service %SERVICE_NAME% does not exist
     pause
     exit /b 0
 )
 
-echo ⚠️  即将卸载服务 %SERVICE_NAME%
-echo ❓ 确认卸载？(y/n)
+echo ⚠️  About to uninstall service %SERVICE_NAME%
+echo ❓ Confirm uninstallation? (y/n)
 set /p choice=
 
 if /i not "%choice%"=="y" (
-    echo 取消卸载
+    echo Uninstallation canceled
     pause
     exit /b 0
 )
 
-echo 🔄 停止并卸载服务...
+echo 🔄 Stopping and uninstalling service...
 nssm stop %SERVICE_NAME%
 nssm remove %SERVICE_NAME% confirm
 
-echo ✅ 服务卸载完成
+echo ✅ Service uninstallation completed
 pause

@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-统一日志管理模块 - 全项目唯一日志出口
-提供全项目统一的日志记录功能，支持：
-- 文件和控制台输出
-- 标准输出/错误重定向
-- 第三方库日志捕获
-- 日志轮转和归档
-- 全项目统一日志出口
-- 自动捕获所有输出
+Unified log management module - Single log entry point for the entire project
+Provides unified logging functionality for the entire project, supporting:
+- File and console output
+- Standard output/error redirection
+- Third-party library log capture
+- Log rotation and archiving
+- Single log entry point for the entire project
+- Automatic capture of all output
 
-使用方式：
+Usage:
 from local_agent.logger import get_logger
 logger = get_logger(__name__)
-logger.info("日志信息")
+logger.info("Log info")
 """
 
 import logging
@@ -26,30 +26,30 @@ from logging.handlers import RotatingFileHandler
 
 
 class UnifiedLogger:
-    """统一日志管理类 - 全项目唯一日志出口"""
+    """Unified log management class - Single log entry point for the entire project"""
     
     def __init__(self, name: str = "local_agent"):
         self.name = name
         self.logger = logging.getLogger(name)
         
-        # 确保只初始化一次
+        # Ensure initialization only once
         if not self.logger.handlers:
             self._setup_logger()
             
-            # 只在主日志器初始化时执行重定向和第三方库捕获
+            # Only execute redirection and third-party log capture when initializing the main logger
             if name == "local_agent":
                 self._redirect_stdout_stderr()
                 self._capture_third_party_logs()
     
     def _setup_logger(self):
-        """配置统一日志器 - 全项目统一出口"""
-        # 设置默认配置值
+        """Configure unified logger - Single entry point for the entire project"""
+        # Set default configuration values
         log_level = logging.INFO
         log_file = Path('logs/local_agent.log')
         log_max_size = 10 * 1024 * 1024  # 10MB
         log_backup_count = 5
         
-        # 尝试从配置获取值（避免循环导入）
+        # Try to get values from configuration (avoid circular import)
         try:
             from .config import get_config
             config = get_config()
@@ -58,18 +58,18 @@ class UnifiedLogger:
             log_max_size = config.get('log_max_size', 10 * 1024 * 1024)
             log_backup_count = config.get('log_backup_count', 5)
         except ImportError:
-            # 如果无法导入配置，使用默认值
+            # If unable to import configuration, use default values
             pass
         
         self.logger.setLevel(log_level)
         
-        # 创建统一的格式化器 - 增强可读性，包含进程ID
+        # Create unified formatter - enhance readability, include process ID
         formatter = logging.Formatter(
             '%(asctime)s [%(levelname)-8s] %(name)s [PID:%(process)d] - %(message)s',
             datefmt='%Y-%m-%d %H:%M:%S'
         )
         
-        # 文件处理器 - 支持日志轮转
+        # File handler - support log rotation
         log_file.parent.mkdir(parents=True, exist_ok=True)
         
         file_handler = RotatingFileHandler(
@@ -81,16 +81,16 @@ class UnifiedLogger:
         file_handler.setLevel(log_level)
         file_handler.setFormatter(formatter)
         
-        # 控制台处理器 - 用于调试时查看输出
+        # Console handler - for viewing output during debug
         console_handler = logging.StreamHandler(sys.stdout)
         console_handler.setLevel(log_level)
         console_handler.setFormatter(formatter)
         
-        # 确保Windows环境下的编码兼容性
+        # Ensure encoding compatibility in Windows environment
         if sys.platform == "win32":
             import locale
             try:
-                # 尝试设置控制台编码为UTF-8
+                # Try to set console encoding to UTF-8
                 if hasattr(sys.stdout, 'reconfigure'):
                     sys.stdout.reconfigure(encoding='utf-8')
                 if hasattr(sys.stderr, 'reconfigure'):
@@ -98,32 +98,32 @@ class UnifiedLogger:
             except:
                 pass
         
-        # 添加处理器 - 文件和控制台
+        # Add handlers - file and console
         self.logger.addHandler(file_handler)
         self.logger.addHandler(console_handler)
         
-        # 防止日志传播到根日志器
+        # Prevent log propagation to root logger
         self.logger.propagate = False
     
     def _redirect_stdout_stderr(self):
-        """重定向标准输出和错误输出到日志文件 - 全项目统一出口"""
-        # 检查是否已经重定向过，避免重复重定向
+        """Redirect standard output and error output to log file - Single entry point for the entire project"""
+        # Check if already redirected to avoid duplicate redirection
         if hasattr(sys.stdout, '_is_logging_stream') or hasattr(sys.stderr, '_is_logging_stream'):
             return
         
-        # 使用全局主日志器进行重定向，避免重复记录
+        # Use global main logger for redirection to avoid duplicate logging
         main_logger = logging.getLogger("local_agent")
         
         class LoggingStream:
-            """将标准输出重定向到日志的流 - 全项目统一出口"""
+            """Stream that redirects standard output to log - Single entry point for the entire project"""
             def __init__(self, level=logging.INFO, original_stream=None):
                 self.level = level
-                self._is_logging_stream = True  # 标记为日志流
-                self.original_stream = original_stream  # 保留原始流
+                self._is_logging_stream = True  # Mark as logging stream
+                self.original_stream = original_stream  # Keep original stream
             
             def write(self, msg):
-                if msg.strip():  # 忽略空消息
-                    # 直接写入到原始流，不通过日志系统，避免递归调用
+                if msg.strip():  # Ignore empty messages
+                    # Write directly to original stream, bypassing log system to avoid recursive calls
                     if self.original_stream:
                         self.original_stream.write(msg)
                         self.original_stream.flush()
@@ -137,51 +137,51 @@ class UnifiedLogger:
                 return False
             
             def fileno(self):
-                # 返回原始流的文件描述符
+                # Return original stream's file descriptor
                 if self.original_stream and hasattr(self.original_stream, 'fileno'):
                     return self.original_stream.fileno()
                 return -1
         
-        # 重定向标准输出 - 保留原始控制台输出
+        # Redirect standard output - preserve original console output
         sys.stdout = LoggingStream(logging.INFO, sys.__stdout__)
         
-        # 重定向标准错误 - 保留原始控制台输出
+        # Redirect standard error - preserve original console output
         sys.stderr = LoggingStream(logging.ERROR, sys.__stderr__)
     
     def _capture_third_party_logs(self):
-        """捕获第三方库的日志输出 - 全项目统一出口"""
-        # 设置默认日志级别
+        """Capture third-party library log output - unified project-wide exit"""
+        # Setup default log level
         log_level = logging.INFO
         
-        # 尝试从配置获取值（避免循环导入）
+        # Try to get values from configuration (avoid circular import)
         try:
             from .config import get_config
             config = get_config()
             log_level = getattr(logging, config.get('log_level', 'INFO'))
         except ImportError:
-            # 如果无法导入配置，使用默认值
+            # If unable to import configuration, use default values
             pass
         
-        # 设置根日志器级别
+        # Setup root logger level
         logging.getLogger().setLevel(log_level)
         
-        # 为常见第三方库设置日志级别 - 增强捕获范围
+        # Setup log levels for common third-party libraries - enhance capture scope
         third_party_loggers = [
-            # Web框架相关
+            # Web framework related
             'websockets', 'fastapi', 'uvicorn', 'starlette', 'flask', 'django',
-            # 网络相关
+            # Network related
             'asyncio', 'aiohttp', 'httpx', 'requests', 'urllib3', 'socketio',
-            # 系统相关
+            # System related
             'psutil', 'win32', 'pywin32', 'wmi', 'pywintypes',
-            # 数据库相关
+            # Database related
             'sqlalchemy', 'aiosqlite', 'sqlite3', 'pymysql', 'psycopg2',
-            # 序列化相关
+            # Serialization related
             'json', 'pickle', 'yaml', 'toml',
-            # 其他常用库
+            # Other common libraries
             'PIL', 'Pillow', 'numpy', 'pandas', 'matplotlib', 'opencv',
-            # 日期时间相关
+            # DateTime related
             'datetime', 'time', 'calendar',
-            # 文件系统相关
+            # FileSystem related
             'os', 'sys', 'pathlib', 'shutil', 'glob'
         ]
         
@@ -189,61 +189,61 @@ class UnifiedLogger:
             try:
                 lib_logger = logging.getLogger(logger_name)
                 lib_logger.setLevel(log_level)
-                # 防止第三方库日志传播到根日志器
+                # Prevent third-party library logs from propagating to root logger
                 lib_logger.propagate = False
                 
-                # 清除现有处理器，避免重复输出
+                # Clear existing handlers to avoid duplicate output
                 for handler in lib_logger.handlers[:]:
                     lib_logger.removeHandler(handler)
                     
-                # 添加项目统一处理器
+                # Add project unified handlers
                 for handler in self.logger.handlers:
                     lib_logger.addHandler(handler)
                     
             except Exception as e:
-                # 捕获配置异常，不影响主流程
-                self.logger.warning(f"配置第三方库日志器 {logger_name} 失败: {e}")
+                # Capture configuration exceptions, don't affect main flow
+                self.logger.warning(f"Configuring third-party logger {logger_name} failed: {e}")
     
     def debug(self, msg: str, *args, **kwargs):
-        """调试级别日志"""
+        """Debug level log"""
         self.logger.debug(msg, *args, **kwargs)
     
     def info(self, msg: str, *args, **kwargs):
-        """信息级别日志"""
+        """Info level log"""
         self.logger.info(msg, *args, **kwargs)
     
     def warning(self, msg: str, *args, **kwargs):
-        """警告级别日志"""
+        """Warning level log"""
         self.logger.warning(msg, *args, **kwargs)
     
     def error(self, msg: str, *args, **kwargs):
-        """错误级别日志"""
+        """Error level log"""
         self.logger.error(msg, *args, **kwargs)
     
     def critical(self, msg: str, *args, **kwargs):
-        """严重级别日志"""
+        """Critical level log"""
         self.logger.critical(msg, *args, **kwargs)
     
     def exception(self, msg: str, *args, **kwargs):
-        """异常日志"""
+        """Exception log"""
         self.logger.exception(msg, *args, **kwargs)
     
     def print(self, msg: str, *args, **kwargs):
-        """兼容print语句的日志方法"""
+        """Log method compatible with print statement"""
         self.info(f"[PRINT] {msg}", *args, **kwargs)
 
 
-# 全局日志实例管理
+# Global logger instance management
 _global_loggers: Dict[str, UnifiedLogger] = {}
-# 重定向状态标记
+# Redirection status marker
 _redirected = False
-# 全局初始化状态
+# Global initialization status
 _initialized = False
 
 
 def get_logger(name: str = "local_agent") -> UnifiedLogger:
-    """获取全局日志实例 - 全项目统一入口（自动初始化）"""
-    # 自动初始化日志系统（如果尚未初始化）
+    """Get global logger instance - unified project-wide entry (automatic initialization)"""
+    # Automatically initialize logging system (if not yet initialized)
     if not _initialized:
         _auto_setup_logging(True)
     
@@ -253,18 +253,18 @@ def get_logger(name: str = "local_agent") -> UnifiedLogger:
 
 
 def _auto_setup_logging(debug=False):
-    """自动初始化日志系统（内部使用）"""
+    """Automatically initialize logging system (internal use)"""
     global _initialized
     
     if not _initialized:
-        # 标记为已初始化，避免递归调用
+        # Mark as initialized to avoid recursive calls
         _initialized = True
         
-        # 初始化主日志器（直接创建，不通过get_logger避免递归）
+        # Initialize main logger (direct creation, avoid recursion through get_logger)
         if "local_agent" not in _global_loggers:
-            # 在初始化时设置日志级别（如果是debug模式）
+            # Setup log level during initialization (if in debug mode)
             if debug:
-                # 临时修改全局配置以支持debug模式
+                # Temporarily modify global configuration to support debug mode
                 import os
                 os.environ['LOG_LEVEL'] = 'DEBUG'
                 
@@ -273,14 +273,14 @@ def _auto_setup_logging(debug=False):
         else:
             main_logger = _global_loggers["local_agent"]
         
-        # 设置常见模块的日志器（直接创建，不通过get_logger）
+        # Setup loggers for common modules (direct creation, avoid recursion through get_logger)
         module_loggers = [
             'local_agent.api', 'local_agent.core', 'local_agent.websocket',
             'local_agent.config', 'local_agent.init',
-            # 脚本模块
+            # Script modules
             'scripts.production_launcher', 'scripts.ultimate_keepalive',
             'scripts.pyinstaller_packager', 'scripts.portable_packager',
-            # 测试模块
+            # Test modules
             'tests.test_application', 'tests.websocket_server'
         ]
         
@@ -288,108 +288,108 @@ def _auto_setup_logging(debug=False):
             if module_name not in _global_loggers:
                 _global_loggers[module_name] = UnifiedLogger(module_name)
         
-        main_logger.info("全局日志系统初始化完成")
+        main_logger.info("Global logging system initialized")
 
 
 def setup_global_logging(debug=False):
-    """设置全局日志配置 - 应用启动时调用（兼容性函数）"""
+    """Set global logging configuration - called when application starts (compatibility function)"""
     _auto_setup_logging(debug=debug)
 
 
 def redirect_all_output():
-    """重定向所有输出到日志 - 用于脚本和独立运行"""
+    """Redirect all output to log - used for scripts and standalone execution"""
     global _redirected
     
-    # 避免重复重定向
+    # Avoid duplicate redirection
     if _redirected:
         return
     
     main_logger = get_logger("local_agent")
-    main_logger.info("开始重定向所有输出到日志系统")
+    main_logger.info("Starting redirecting all output to logging system")
     
-    # 标记为重定向状态
+    # Mark as redirected status
     _redirected = True
 
 
 def is_logging_initialized() -> bool:
-    """检查日志系统是否已初始化"""
+    """Check if logging system has been initialized"""
     return _initialized
 
 
 def get_all_loggers() -> List[str]:
-    """获取所有已注册的日志器名称"""
+    """Get all registered logger names"""
     return list(_global_loggers.keys())
 
 
 def set_log_level(level: str):
-    """动态设置全局日志级别"""
+    """Dynamically set global logging level"""
     try:
         log_level = getattr(logging, level.upper())
         
-        # 更新所有已注册的日志器
+        # Update all registered loggers
         for logger_name, logger_instance in _global_loggers.items():
             logger_instance.logger.setLevel(log_level)
             
-        # 更新根日志器
+        # Update root logger
         logging.getLogger().setLevel(log_level)
         
-        get_logger().info(f"全局日志级别已设置为: {level}")
+        get_logger().info(f"Global logging level set to: {level}")
         
     except AttributeError:
-        get_logger().error(f"无效的日志级别: {level}")
+        get_logger().error(f"Invalid logging level: {level}")
 
 
 def flush_all_logs():
-    """刷新所有日志缓冲区"""
+    """Flush all log buffers"""
     for logger_instance in _global_loggers.values():
         for handler in logger_instance.logger.handlers:
             handler.flush()
 
 
-# 便捷的全局日志函数
+# Convenient global log functions
 def log_debug(msg: str):
-    """全局调试日志"""
+    """Global debug log"""
     get_logger().debug(msg)
 
 def log_info(msg: str):
-    """全局信息日志"""
+    """Global info log"""
     get_logger().info(msg)
 
 def log_warning(msg: str):
-    """全局警告日志"""
+    """Global warning log"""
     get_logger().warning(msg)
 
 def log_error(msg: str):
-    """全局错误日志"""
+    """Global error log"""
     get_logger().error(msg)
 
 def log_critical(msg: str):
-    """全局严重日志"""
+    """Global critical log"""
     get_logger().critical(msg)
 
 
-# 简化导入接口
+# Simplified import interface
 def setup_logging():
-    """简化日志设置函数 - 自动初始化并重定向输出"""
+    """Simplified logging setup function - automatic initialization and output redirection"""
     _auto_setup_logging()
     redirect_all_output()
     return get_logger()
 
 
 def get_module_logger(module_name: str = None):
-    """获取模块日志器 - 自动推断模块名"""
+    """Get module logger - automatically infer module name"""
     if module_name is None:
-        # 自动推断调用者模块名
+        # Automatically infer caller module name
         import inspect
         frame = inspect.currentframe()
         try:
-            # 获取调用者的模块名
+            # Get caller's module name
             caller_frame = frame.f_back
             caller_module = caller_frame.f_globals.get('__name__', 'unknown')
             
-            # 简化模块名
+            # Simplify module name
             if caller_module.startswith('src.'):
-                module_name = caller_module[4:]  # 移除'src.'前缀
+                module_name = caller_module[4:]  # Remove 'src.' prefix
             elif caller_module.startswith('scripts.'):
                 module_name = caller_module
             elif caller_module.startswith('tests.'):

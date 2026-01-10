@@ -1,42 +1,42 @@
 """
-缓存的 key 常量定义
+Cache key constant definitions
 """
-# token 缓存 key
+# token Cache key
 AUTHORIZATION_CACHE_KEY = "Authorization"
-# 鉴权信息缓存 key
+# [Authentication] info cache key
 AUTH_INFO_CACHE_KEY = "auth_info"
-# 本机信息缓存 key
+# [Local machine] info cache key
 LOCAL_INFO_CACHE_KEY = "local_info"
 
-# python 地址信息缓存 key
+# python address info cache key
 PYTHON_CACHE_KEY = "python_path"
 
-# realvnc 地址信息缓存 key
+# realvnc address info cache key
 REALVNC_CACHE_KEY = "realvnc_path"
 
-# agent 更新失败的时间
+# agent update failure [time]
 AGENT_UPDATE_FAILED_TIME = "agent_update_failed_time"
 
-# 硬件信息获取定时任务id
+# [Hardware] info get [scheduled task] id
 HARDWARE_INFO_TASK_ID = "hardware_info_task_id"
 
-# 硬件信息上报定时任务id
+# [Hardware] info [upload scheduled task] id
 HARDWARE_INFO_UPLOAD_TASK_ID = "hardware_info_upload_task_id"
 
-# agent 状态key  
-# 内容标准：{"test": bool, 是否正在测试
-# "vnc": bool, 是否正在 vnc 连接
-# "sut": bool, 是否正在获取硬件信息
-# "use": bool, 是否正在使用（用于判断测试是否还在进行）
-# "pre": bool, 是否正在准备测试（用于判断是否需要等待）
+# agent status key  
+# [Content standard]: {"test": bool, [whether currently] testing
+# "vnc": bool, [whether currently] VNC connection
+# "sut": bool, [whether currently] getting [hardware] info
+# "use": bool, [whether currently in use] ([used to determine if] test [is still] in progress)
+# "pre": bool, [whether currently preparing] test ([used to determine if need to] wait)
 # }
 AGENT_STATUS_CACHE_KEY = "agent_status_cache_key"
 
-# dmr 硬件信息缓存 key
+# dmr [hardware] info cache key
 DMR_INFO_CACHE_KEY = "dmr_info_cache_key"
 
-# app 更新相关的缓存 key
+# app update [related] cache key
 APP_UPDATE_CACHE_KEY = "app_update_cache_key"
 
-# ek 测试信息缓存 key
+# ek test info cache key
 EK_TEST_INFO_CACHE_KEY = "ek_test_info_cache_key"

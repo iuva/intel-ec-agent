@@ -1,7 +1,7 @@
 """
-路径工具类 - 根据环境类型提供不同的路径获取功能
+Path utility class - Provides different path acquisition functions based on environment type
 
-提供开发环境和生产环境下的路径获取逻辑，确保路径获取的一致性和正确性。
+Provides path acquisition logic for development and production environments, ensuring consistency and correctness of path acquisition.
 """
 
 import sys
@@ -15,303 +15,302 @@ logger = get_logger(__name__)
 
 
 class PathUtils:
-    """路径工具类，提供环境相关的路径获取功能"""
+    """Path utility class, provides environment-related path acquisition functionality"""
     
     @staticmethod
     def get_current_executable_path() -> Optional[Path]:
         """
-        获取当前可执行文件路径
+        Get current executable file path
         
-        如果是开发环境，返回 None
-        如果是生产环境，返回当前正在执行的exe路径
+        Returns None for development environment
+        Returns current executing exe path for production environment
         
         Returns:
-            Optional[Path]: 可执行文件路径，开发环境下返回None
+            Optional[Path]: Executable file path, returns None for development environment
         """
         try:
             if is_development():
-                logger.debug("开发环境：当前可执行文件路径返回None")
+                logger.debug("Development environment: current executable path returns None")
                 return None
             
-            # 生产环境：返回当前可执行文件路径
+            # Production environment: return current executable file path
             if getattr(sys, 'frozen', False):
                 exe_path = Path(sys.executable)
-                logger.debug(f"生产环境：检测到打包环境，返回可执行文件路径: {exe_path}")
+                logger.debug(f"Production environment: detected packaged environment, returning executable path: {exe_path}")
                 return exe_path
             else:
-                # 虽然is_production()返回True，但不是打包环境的情况
-                # 这种情况可能是生产环境但未打包，返回Python解释器路径
+                # Although is_production() returns True, but not in packaged environment
+                # This situation may be production environment but not packaged, return Python interpreter path
                 python_path = Path(sys.executable)
-                logger.debug(f"生产环境（未打包）：返回Python解释器路径: {python_path}")
+                logger.debug(f"Production environment (unpackaged): returning Python interpreter path: {python_path}")
                 return python_path
                 
         except Exception as e:
-            logger.error(f"获取当前可执行文件路径失败: {e}")
+            logger.error(f"Failed to obtain current executable path: {e}")
             return None
     
     @staticmethod
     def get_root_path() -> Path:
         """
-        获取当前执行环境的根路径
+        Get root path of current execution environment
         
-        如果是开发环境，返回当前项目的根路径
-        如果是生产环境，返回exe所在根路径
+        If development environment, returns current project's root path
+        If production environment, returns exe's root path
         
         Returns:
-            Path: 根路径
+            Path: Root path
         """
         try:
             if is_development():
-                # 开发环境：返回项目根目录
-                # 通过回溯路径找到项目根目录
+                # Development environment: return project root directory
+                # Find project root directory by backtracking path
                 current_file_path = Path(__file__).resolve()
-                project_root = current_file_path.parent.parent.parent.parent  # 回溯到项目根目录
+                project_root = current_file_path.parent.parent.parent.parent  # Backtrack to project root directory
                 
-                # 验证项目根目录是否存在必要的目录结构
+                # Validate project root directory has necessary directory structure
                 if (project_root / "src").exists() and (project_root / "src" / "local_agent").exists():
-                    logger.debug(f"开发环境：返回项目根路径: {project_root}")
+                    logger.debug(f"Development environment: returning project root path: {project_root}")
                     return project_root
                 else:
-                    # 如果标准路径不存在，尝试其他方法
-                    # 从当前工作目录向上查找
+                    # If standard path doesn't exist, try other method
+                    # Search upward from current working directory
                     cwd = Path.cwd()
                     if (cwd / "src" / "local_agent").exists():
-                        logger.debug(f"开发环境：从工作目录返回根路径: {cwd}")
+                        logger.debug(f"Development environment: returning root path from working directory: {cwd}")
                         return cwd
                     else:
-                        # 最后回退到当前文件所在目录的根路径
+                        # Finally fallback to root path of current file's directory
                         fallback_root = current_file_path.parent.parent.parent
-                        logger.warning(f"开发环境：使用备用根路径: {fallback_root}")
+                        logger.warning(f"Development environment: using fallback root path: {fallback_root}")
                         return fallback_root
             else:
-                # 生产环境：返回exe所在根路径
+                # Production environment: return exe's root path
                 if getattr(sys, 'frozen', False):
-                    # 打包环境：exe所在目录即为根目录
+                    # Packaged environment: exe's directory is root directory
                     exe_dir = Path(sys.executable).parent
-                    logger.debug(f"生产环境（打包）：返回exe所在根路径: {exe_dir}")
+                    logger.debug(f"Production environment (packaged): returning exe root path: {exe_dir}")
                     return exe_dir
                 else:
-                    # 生产环境但未打包：返回当前工作目录或Python解释器所在目录
-                    # 优先使用当前工作目录
+                    # Production environment but not packaged: return current working directory or Python interpreter directory
+                    # Priority use current working directory
                     cwd = Path.cwd()
                     if (cwd / "scripts").exists() or (cwd / "dist").exists():
-                        logger.debug(f"生产环境（未打包）：返回工作目录根路径: {cwd}")
+                        logger.debug(f"Production environment (unpackaged): returning working directory root path: {cwd}")
                         return cwd
                     else:
-                        # 回退到Python解释器所在目录
+                        # Fallback to Python interpreter directory
                         python_dir = Path(sys.executable).parent
-                        logger.debug(f"生产环境（未打包）：返回Python目录根路径: {python_dir}")
+                        logger.debug(f"Production environment (unpackaged): returning Python directory root path: {python_dir}")
                         return python_dir
                         
         except Exception as e:
-            logger.error(f"获取根路径失败: {e}")
-            # 发生异常时返回当前工作目录作为备用
+            logger.error(f"Failed to obtain root path: {e}")
+            # When exception occurs, return current working directory as fallback
             return Path.cwd()
     
     @staticmethod
     def get_scripts_directory() -> Path:
         """
-        获取脚本目录路径
+        Get scripts directory path
         
-        开发环境：项目根目录下的scripts目录
-        生产环境：exe所在目录下的scripts目录
+        Development environment: scripts directory under project root
+        Production environment: scripts directory under exe directory
         
         Returns:
-            Path: 脚本目录路径
+            Path: Scripts directory path
         """
         root_path = PathUtils.get_root_path()
         scripts_dir = root_path / "scripts"
         
-        # 确保目录存在
+        # Ensure directory exists
         scripts_dir.mkdir(exist_ok=True)
         
-        logger.debug(f"脚本目录路径: {scripts_dir}")
+        logger.debug(f"Scripts directory path: {scripts_dir}")
         return scripts_dir
     
     @staticmethod
     def get_src_directory() -> Optional[Path]:
         """
-        获取源码目录路径
+        Get source code directory path
         
-        开发环境：返回src目录路径
-        生产环境：返回None（生产环境没有源码）
+        Development environment: returns src directory path
+        Production environment: returns None (no source code in production)
         
         Returns:
-            Optional[Path]: 源码目录路径，生产环境下返回None
+            Optional[Path]: Source code directory path, returns None in production
         """
         if is_development():
             root_path = PathUtils.get_root_path()
             src_dir = root_path / "src"
             
             if src_dir.exists():
-                logger.debug(f"开发环境：返回源码目录路径: {src_dir}")
+                logger.debug(f"Development environment: returning source code directory path: {src_dir}")
                 return src_dir
             else:
-                logger.warning(f"开发环境：源码目录不存在: {src_dir}")
+                logger.warning(f"Development environment: source code directory does not exist: {src_dir}")
                 return None
         else:
-            logger.debug("生产环境：源码目录返回None")
+            logger.debug("Production environment: source code directory returns None")
             return None
     
     @staticmethod
     def get_temp_directory() -> Path:
         """
-        获取临时目录路径
+        Get temporary directory path
         
-        开发环境：项目根目录下的temp目录
-        生产环境：exe所在目录下的temp目录
+        Development environment: temp directory under project root
+        Production environment: temp directory under exe directory
         
         Returns:
-            Path: 临时目录路径
+            Path: Temporary directory path
         """
         root_path = PathUtils.get_root_path()
         temp_dir = root_path / "temp"
         
-        # 确保目录存在
+        # Ensure directory exists
         temp_dir.mkdir(exist_ok=True)
         
-        logger.debug(f"临时目录路径: {temp_dir}")
+        logger.debug(f"Temporary directory path: {temp_dir}")
         return temp_dir
     
     @staticmethod
     def get_logs_directory() -> Path:
         """
-        获取日志目录路径
+        Get logs directory path
         
-        开发环境：项目根目录下的logs目录
-        生产环境：exe所在目录下的logs目录
+        Development environment: logs directory under project root
+        Production environment: logs directory under exe directory
         
         Returns:
-            Path: 日志目录路径
+            Path: Logs directory path
         """
         root_path = PathUtils.get_root_path()
         logs_dir = root_path / "logs"
         
-        # 确保目录存在
+        # Ensure directory exists
         logs_dir.mkdir(exist_ok=True)
         
-        logger.debug(f"日志目录路径: {logs_dir}")
+        logger.debug(f"Logs directory path: {logs_dir}")
         return logs_dir
     
     @staticmethod
     def get_backup_directory() -> Path:
         """
-        获取备份目录路径
+        Get backup directory path
         
-        开发环境：项目根目录下的backup目录
-        生产环境：exe所在目录下的backup目录
+        Development environment: backup directory under project root
+        Production environment: backup directory under exe directory
         
         Returns:
-            Path: 备份目录路径
+            Path: Backup directory path
         """
         root_path = PathUtils.get_root_path()
         backup_dir = root_path / "backup"
         
-        # 确保目录存在
+        # Ensure directory exists
         backup_dir.mkdir(exist_ok=True)
         
-        logger.debug(f"备份目录路径: {backup_dir}")
+        logger.debug(f"Backup directory path: {backup_dir}")
         return backup_dir
     
     @staticmethod
     def get_updates_directory() -> Path:
         """
-        获取更新文件目录路径
+        Get updates directory path
         
-        开发环境：项目根目录下的updates目录
-        生产环境：exe所在目录下的updates目录
+        Development environment: updates directory under project root
+        Production environment: updates directory under exe directory
         
         Returns:
-            Path: 更新文件目录路径
+            Path: Updates directory path
         """
         root_path = PathUtils.get_root_path()
         updates_dir = root_path / "updates"
         
-        # 确保目录存在
+        # Ensure directory exists
         updates_dir.mkdir(exist_ok=True)
         
-        logger.debug(f"更新文件目录路径: {updates_dir}")
+        logger.debug(f"Updates directory path: {updates_dir}")
         return updates_dir
     
     @staticmethod
     def get_config_file_path() -> Path:
         """
-        获取配置文件路径
+        Get config file path
         
-        开发环境：项目根目录下的config.ini
-        生产环境：exe所在目录下的config.ini
+        Development environment: config.ini under project root
+        Production environment: config.ini under exe directory
         
         Returns:
-            Path: 配置文件路径
+            Path: Config file path
         """
         root_path = PathUtils.get_root_path()
         config_file = root_path / "config.ini"
         
-        logger.debug(f"配置文件路径: {config_file}")
+        logger.debug(f"Config file path: {config_file}")
         return config_file
 
 
-# 便捷函数
+# Convenience functions
 def get_current_executable_path() -> Optional[Path]:
-    """便捷函数：获取当前可执行文件路径"""
+    """Convenience function: get current executable file path"""
     return PathUtils.get_current_executable_path()
 
 
 def get_root_path() -> Path:
-    """便捷函数：获取当前执行环境的根路径"""
+    """Convenience function: get root path of current execution environment"""
     return PathUtils.get_root_path()
 
 
 def get_scripts_directory() -> Path:
-    """便捷函数：获取脚本目录路径"""
+    """Convenience function: get scripts directory path"""
     return PathUtils.get_scripts_directory()
 
 
 def get_src_directory() -> Optional[Path]:
-    """便捷函数：获取源码目录路径"""
+    """Convenience function: get source code directory path"""
     return PathUtils.get_src_directory()
 
 
 def get_temp_directory() -> Path:
-    """便捷函数：获取临时目录路径"""
+    """Convenience function: get temporary directory path"""
     return PathUtils.get_temp_directory()
 
 
 def get_logs_directory() -> Path:
-    """便捷函数：获取日志目录路径"""
+    """Convenience function: get logs directory path"""
     return PathUtils.get_logs_directory()
 
 
 def get_backup_directory() -> Path:
-    """便捷函数：获取备份目录路径"""
+    """Convenience function: get backup directory path"""
     return PathUtils.get_backup_directory()
 
 
 def get_updates_directory() -> Path:
-    """便捷函数：获取更新文件目录路径"""
+    """Convenience function: get updates directory path"""
     return PathUtils.get_updates_directory()
 
 
 def get_config_file_path() -> Path:
-    """便捷函数：获取配置文件路径"""
+    """Convenience function: get config file path"""
     return PathUtils.get_config_file_path()
 
 
 if __name__ == "__main__":
-    """测试代码"""
-    print("=== 路径工具类测试 ===")
+    """Test code"""
+    print("=== Path Utils Test ===")
     
-    # 测试环境判断
-    print(f"开发环境: {is_development()}")
-    print(f"生产环境: {is_production()}")
+    # Test environment detection
+    print(f"Development environment: {is_development()}")
+    print(f"Production environment: {is_production()}")
     
-    # 测试主要功能
-    print(f"\n当前可执行文件路径: {get_current_executable_path()}")
-    print(f"根路径: {get_root_path()}")
-    print(f"脚本目录: {get_scripts_directory()}")
-    print(f"源码目录: {get_src_directory()}")
-    print(f"临时目录: {get_temp_directory()}")
-    print(f"日志目录: {get_logs_directory()}")
-    print(f"备份目录: {get_backup_directory()}")
-    print(f"更新目录: {get_updates_directory()}")
-    print(f"配置文件路径: {get_config_file_path()}")
+    print(f"\nCurrent executable path: {get_current_executable_path()}")
+    print(f"Root path: {get_root_path()}")
+    print(f"Scripts directory: {get_scripts_directory()}")
+    print(f"Source code directory: {get_src_directory()}")
+    print(f"Temporary directory: {get_temp_directory()}")
+    print(f"Logs directory: {get_logs_directory()}")
+    print(f"Backup directory: {get_backup_directory()}")
+    print(f"Updates directory: {get_updates_directory()}")
+    print(f"Config file path: {get_config_file_path()}")

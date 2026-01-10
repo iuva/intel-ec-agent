@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-文件下载器工具
-支持同步和异步下载，包含断点续传、认证token处理、进度回调等功能
+File downloader utility
+Supports synchronous and asynchronous downloads, includes resumable downloads, authentication token handling, progress callbacks, etc.
 """
 
 import asyncio
@@ -14,22 +14,22 @@ from typing import Optional, Callable
 
 import requests
 
-# 检查是否作为独立脚本运行
+# Check if running as standalone script
 if __name__ == "__main__":
-    # 作为独立脚本运行时，添加项目路径到sys.path
+    # When running as standalone script, add project path to sys.path
     import os
     import sys
     project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
     if project_root not in sys.path:
         sys.path.insert(0, project_root)
 
-# 导入项目全局组件
+# Import project global components
 try:
     from ..logger import get_logger
     from local_agent.core.global_cache import cache
     from local_agent.core.constants import AUTHORIZATION_CACHE_KEY
 except ImportError:
-    # 作为独立脚本运行时，使用简单的日志实现
+    # When running as standalone script, use simple log implementation
     import logging
     def get_logger(name=None):
         logger = logging.getLogger(name or "file_downloader")
@@ -41,7 +41,7 @@ except ImportError:
             logger.setLevel(logging.INFO)
         return logger
     
-    # 简单的缓存实现
+    # Simple cache implementation
     class SimpleCache:
         def __init__(self):
             self._data = {}
@@ -57,19 +57,19 @@ except ImportError:
 
 
 class FileDownloader:
-    """文件下载工具类，支持断点续传"""
+    """File download utility class, supports resumable downloads"""
     
     def __init__(self, 
                  chunk_size: int = 8192,
                  max_retries: int = 3,
                  timeout: int = 300):
         """
-        初始化下载器
+        Initialize downloader
         
         Args:
-            chunk_size: 下载块大小（字节）
-            max_retries: 最大重试次数
-            timeout: 下载超时时间（秒）
+            chunk_size: Download chunk size (bytes)
+            max_retries: Maximum retry attempts
+            timeout: Download timeout (seconds)
         """
         self.chunk_size = chunk_size
         self.max_retries = max_retries
@@ -81,53 +81,53 @@ class FileDownloader:
                      save_path: str,
                      progress_callback: Optional[Callable[[int, int], None]] = None) -> bool:
         """
-        下载文件（支持断点续传）
+        Download file (supports resumable download)
         
         Args:
-            url: 下载链接
-            save_path: 保存位置
-            progress_callback: 进度回调函数（可选）
+            url: Download URL
+            save_path: Save path
+            progress_callback: Progress callback function (optional)
             
         Returns:
-            bool: 下载是否成功
+            bool: Whether download succeeded
         """
-        # 检查是否安装了aiohttp，如果没有则回退到同步下载
+        # Check if aiohttp is installed, fallback to synchronous download if not
         try:
             import aiohttp
         except ImportError:
-            self.logger.warning("aiohttp未安装，回退到同步下载")
+            self.logger.warning("aiohttp not installed, falling back to synchronous download")
             return self.download_sync(url, save_path, progress_callback)
         
         path = Path(save_path)
 
-        self.logger.info(f"开始下载文件: {url} -> {save_path}")
+        self.logger.info(f"Starting file download: {url} -> {save_path}")
         
-        # 确保目录存在
+        # Ensure directory exists
         path.parent.mkdir(parents=True, exist_ok=True)
         
-        # 断点续传：获取已下载的文件大小
+        # Resumable download: get already downloaded file size
         downloaded_size = 0
         if path.exists():
             downloaded_size = path.stat().st_size
-            self.logger.info(f"发现已下载文件，继续下载: {downloaded_size} bytes")
+            self.logger.info(f"Found existing downloaded file, resuming download: {downloaded_size} bytes")
         
-        # 设置请求头（支持断点续传和认证）
+        # Setup request headers (support resumable download and authentication)
         headers = {}
         
-        # 添加认证token
+        # Add authentication token
         auth_token = cache.get(AUTHORIZATION_CACHE_KEY)
         if auth_token:
             headers['Authorization'] = f'Bearer {auth_token}'
         
-        # 断点续传
+        # Resumable download
         if downloaded_size > 0:
             headers['Range'] = f'bytes={downloaded_size}-'
         
         for attempt in range(self.max_retries):
             try:
-                self.logger.info(f"开始下载: {url}")
-                self.logger.info(f"保存到: {save_path}")
-                self.logger.info(f"请求头信息: {headers}")
+                self.logger.info(f"Starting download: {url}")
+                self.logger.info(f"Saving to: {save_path}")
+                self.logger.info(f"Request headers: {headers}")
                 
                 async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=self.timeout)) as session:
                     async with session.get(url, headers=headers) as response:
@@ -135,13 +135,13 @@ class FileDownloader:
                         if response.status not in (200, 206):
                             raise Exception(f"HTTP {response.status}: {response.reason}")
                         
-                        # 获取文件总大小
+                        # Get file total size
                         content_length = response.headers.get('content-length')
                         total_size = int(content_length) + downloaded_size if content_length else None
                         
-                        self.logger.info(f"文件大小: {self._format_size(total_size) if total_size else '未知'}")
+                        self.logger.info(f"File size: {self._format_size(total_size) if total_size else 'Unknown'}")
                         
-                        # 打开文件（追加模式支持断点续传）
+                        # Open file (append mode supports resumable download)
                         mode = 'ab' if downloaded_size > 0 else 'wb'
                         with open(path, mode) as f:
                             start_time = time.time()
@@ -152,43 +152,43 @@ class FileDownloader:
                                 f.write(chunk)
                                 downloaded += len(chunk)
                                 
-                                # 进度显示（每10秒输出一次，减少日志密度）
+                                # Progress display (output every 10 seconds to reduce log density)
                                 current_time = time.time()
                                 if current_time - last_log_time >= 10:
                                     speed = self._calculate_speed(downloaded, start_time)
                                     progress = self._format_progress(downloaded, total_size)
-                                    self.logger.info(f"下载进度: {progress} - 速度: {speed}")
+                                    self.logger.info(f"Download progress: {progress} - Speed: {speed}")
                                     last_log_time = current_time
                                 
-                                # 调用进度回调
+                                # Call progress callback
                                 if progress_callback and total_size:
                                     progress_callback(downloaded, total_size)
                         
-                        # 下载完成
+                        # DownloadComplete
                         final_size = path.stat().st_size
                         total_time = time.time() - start_time
                         speed = self._format_speed(final_size, total_time)
                         
-                        self.logger.info(f"下载完成: {self._format_size(final_size)} - 耗时: {total_time:.1f}s - 平均速度: {speed}")
+                        self.logger.info(f"Download completed: {self._format_size(final_size)} - Time: {total_time:.1f}s - Average speed: {speed}")
                         return True
                         
             except Exception as e:
-                self.logger.error(f"下载失败 (尝试 {attempt + 1}/{self.max_retries}): {e}")
+                self.logger.error(f"Download failed (attempt {attempt + 1}/{self.max_retries}): {e}")
                 
                 if attempt < self.max_retries - 1:
                     wait_time = 2 ** attempt  # 指数退避
-                    self.logger.info(f"等待 {wait_time}s 后重试...")
+                    self.logger.info(f"Waiting for {wait_time}s before retrying...")
                     await asyncio.sleep(wait_time)
                 else:
-                    self.logger.error(f"下载失败，达到最大重试次数")
+                    self.logger.error(f"Download failed, reached maximum retry attempts")
                     return False
         
         return False
     
     def _format_size(self, size_bytes: Optional[int]) -> str:
-        """格式化文件大小"""
+        """Format file size"""
         if size_bytes is None:
-            return "未知"
+            return "Unknown"
         
         for unit in ['B', 'KB', 'MB', 'GB']:
             if size_bytes < 1024.0:
@@ -197,7 +197,7 @@ class FileDownloader:
         return f"{size_bytes:.1f} TB"
     
     def _calculate_speed(self, downloaded: int, start_time: float) -> str:
-        """计算下载速度"""
+        """Calculate download speed"""
         elapsed = time.time() - start_time
         if elapsed > 0:
             speed = downloaded / elapsed
@@ -205,8 +205,8 @@ class FileDownloader:
         return "0 B/s"
     
     def _format_speed(self, bytes_per_sec: float, time_sec: float = 1) -> str:
-        """格式化速度"""
-        # 防止除零错误
+        """Format speed"""
+        # Prevent division by zero error
         if time_sec <= 0:
             return "0 B/s"
         
@@ -218,7 +218,7 @@ class FileDownloader:
         return f"{speed:.1f} GB/s"
     
     def _format_progress(self, downloaded: int, total_size: Optional[int]) -> str:
-        """格式化进度显示"""
+        """Format progress display"""
         if total_size and total_size > 0:
             percent = (downloaded / total_size) * 100
             return f"{percent:.1f}% ({self._format_size(downloaded)}/{self._format_size(total_size)})"
@@ -230,60 +230,60 @@ class FileDownloader:
                      save_path: str,
                      progress_callback: Optional[Callable[[int, int], None]] = None) -> bool:
         """
-        同步下载文件（支持断点续传）
+        Synchronously download file (supports resumable download)
         
         Args:
-            url: 下载链接
-            save_path: 保存位置
-            progress_callback: 进度回调函数（可选）
+            url: Download URL
+            save_path: Save path
+            progress_callback: Progress callback function (optional)
             
         Returns:
-            bool: 下载是否成功
+            bool: Whether download succeeded
         """
         path = Path(save_path)
 
-        self.logger.info(f"开始同步下载文件: {url} -> {save_path}")
+        self.logger.info(f"Starting synchronous file download: {url} -> {save_path}")
         
-        # 确保目录存在
+        # Ensure directory exists
         path.parent.mkdir(parents=True, exist_ok=True)
         
-        # 断点续传：获取已下载的文件大小
+        # Resumable download: get already downloaded file size
         downloaded_size = 0
         if path.exists():
             downloaded_size = path.stat().st_size
-            self.logger.info(f"发现已下载文件，继续下载: {downloaded_size} bytes")
+            self.logger.info(f"Found existing downloaded file, resuming download: {downloaded_size} bytes")
         
-        # 设置请求头（支持断点续传和认证）
+        # Setup request headers (support resumable download and authentication)
         headers = {}
         
-        # 添加认证token
+        # Add authentication token
         auth_token = cache.get(AUTHORIZATION_CACHE_KEY)
         if auth_token:
             headers['Authorization'] = f'Bearer {auth_token}'
         
-        # 断点续传
+        # Resumable download
         if downloaded_size > 0:
             headers['Range'] = f'bytes={downloaded_size}-'
         
         for attempt in range(self.max_retries):
             try:
-                self.logger.info(f"开始同步下载: {url}")
-                self.logger.info(f"保存到: {save_path}")
-                self.logger.info(f"请求头信息: {headers}")
+                self.logger.info(f"Starting synchronous download: {url}")
+                self.logger.info(f"Saving to: {save_path}")
+                self.logger.info(f"Request headers: {headers}")
                 
-                # 使用requests进行同步下载
+                # Use requests for synchronous download
                 response = requests.get(url, headers=headers, stream=True, timeout=self.timeout)
                 
                 if response.status_code not in (200, 206):
                     raise Exception(f"HTTP {response.status_code}: {response.reason}")
                 
-                # 获取文件总大小
+                # Get file total size
                 content_length = response.headers.get('content-length')
                 total_size = int(content_length) + downloaded_size if content_length else None
                 
-                self.logger.info(f"文件大小: {self._format_size(total_size) if total_size else '未知'}")
+                self.logger.info(f"File size: {self._format_size(total_size) if total_size else 'Unknown'}")
                 
-                # 打开文件（追加模式支持断点续传）
+                # Open file (append mode supports resumable download)
                 mode = 'ab' if downloaded_size > 0 else 'wb'
                 with open(path, mode) as f:
                     start_time = time.time()
@@ -291,39 +291,39 @@ class FileDownloader:
                     last_log_time = start_time
                     
                     for chunk in response.iter_content(chunk_size=self.chunk_size):
-                        if chunk:  # 过滤掉keep-alive的chunk
+                        if chunk:  # Filter out keep-alive chunks
                             f.write(chunk)
                             downloaded += len(chunk)
                             
-                            # 进度显示（每10秒输出一次，减少日志密度）
+                            # Progress display (output every 10 seconds to reduce log density)
                             current_time = time.time()
                             if current_time - last_log_time >= 10:
                                 speed = self._calculate_speed(downloaded, start_time)
                                 progress = self._format_progress(downloaded, total_size)
-                                self.logger.info(f"下载进度: {progress} - 速度: {speed}")
+                                self.logger.info(f"Download progress: {progress} - Speed: {speed}")
                                 last_log_time = current_time
                             
-                            # 调用进度回调
+                            # Call progress callback
                             if progress_callback and total_size:
                                 progress_callback(downloaded, total_size)
                 
-                # 下载完成
+                # DownloadComplete
                 final_size = path.stat().st_size
                 total_time = time.time() - start_time
                 speed = self._format_speed(final_size, total_time)
                 
-                self.logger.info(f"同步下载完成: {self._format_size(final_size)} - 耗时: {total_time:.1f}s - 平均速度: {speed}")
+                self.logger.info(f"Synchronous download completed: {self._format_size(final_size)} - Time: {total_time:.1f}s - Average speed: {speed}")
                 return True
                 
             except Exception as e:
-                self.logger.error(f"同步下载失败 (尝试 {attempt + 1}/{self.max_retries}): {e}")
+                self.logger.error(f"Synchronous download failed (attempt {attempt + 1}/{self.max_retries}): {e}")
                 
                 if attempt < self.max_retries - 1:
                     wait_time = 2 ** attempt  # 指数退避
-                    self.logger.info(f"等待 {wait_time}s 后重试...")
+                    self.logger.info(f"Waiting for {wait_time}s before retrying...")
                     time.sleep(wait_time)
                 else:
-                    self.logger.error(f"同步下载失败，达到最大重试次数")
+                    self.logger.error(f"Synchronous download failed, reached maximum retry attempts")
                     return False
         
         return False
@@ -331,14 +331,14 @@ class FileDownloader:
 
 async def download_file_async(url: str, save_path: str) -> bool:
     """
-    便捷函数：异步下载文件
+    Convenience function: Asynchronously download file
     
     Args:
-        url: 下载链接
-        save_path: 保存位置
+        url: Download URL
+        save_path: Save path
         
     Returns:
-        bool: 下载是否成功
+        bool: Whether download succeeded
     """
     downloader = FileDownloader()
     return await downloader.download(url, save_path)
@@ -346,24 +346,24 @@ async def download_file_async(url: str, save_path: str) -> bool:
 
 def download_file_sync(url: str, save_path: str) -> bool:
     """
-    便捷函数：同步下载文件
+    Convenience function: Synchronously download file
     
     Args:
-        url: 下载链接
-        save_path: 保存位置
+        url: Download URL
+        save_path: Save path
         
     Returns:
-        bool: 下载是否成功
+        bool: Whether download succeeded
     """
     downloader = FileDownloader()
     return downloader.download_sync(url, save_path)
 
 
 def main():
-    """命令行入口"""
+    """Command line entry"""
     logger = get_logger()
     
-    # 支持同步/异步模式选择
+    # Support synchronous/asynchronous mode selection
     sync_mode = False
     args = sys.argv[1:]
     
@@ -372,31 +372,31 @@ def main():
         args = args[1:]
     
     if len(args) != 2:
-        logger.error("用法: python file_downloader.py [--sync] <下载链接> <保存路径>")
-        logger.error("示例: python file_downloader.py https://example.com/file.zip ./downloads/file.zip")
-        logger.error("示例(同步模式): python file_downloader.py --sync https://example.com/file.zip ./downloads/file.zip")
+        logger.error("Usage: python file_downloader.py [--sync] <download_url> <save_path>")
+        logger.error("Example: python file_downloader.py https://example.com/file.zip ./downloads/file.zip")
+        logger.error("Example (sync mode): python file_downloader.py --sync https://example.com/file.zip ./downloads/file.zip")
         sys.exit(1)
     
     url = args[0]
     save_path = args[1]
     
-    mode_text = "同步" if sync_mode else "异步"
-    logger.info(f"文件下载工具启动 ({mode_text}模式)")
-    logger.info(f"下载链接: {url}")
-    logger.info(f"保存位置: {save_path}")
+    mode_text = "synchronous" if sync_mode else "asynchronous"
+    logger.info(f"File download tool started ({mode_text} mode)")
+    logger.info(f"Download URL: {url}")
+    logger.info(f"Save path: {save_path}")
     logger.info("-" * 50)
     
-    # 运行下载
+    # Run download
     if sync_mode:
         success = download_file_sync(url, save_path)
     else:
         success = asyncio.run(download_file_async(url, save_path))
     
     if success:
-        logger.info("下载成功！")
+        logger.info("Download successful!")
         sys.exit(0)
     else:
-        logger.error("下载失败！")
+        logger.error("Download failed!")
         sys.exit(1)
 
 

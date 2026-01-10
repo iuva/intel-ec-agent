@@ -1,23 +1,23 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-WebSocket消息发送器
-实现全局任意位置的WebSocket消息发送功能，支持两种发送模式：
-1. 直接发送模式：连接失败立即返回失败
-2. 队列缓存模式：连接失败时缓存消息，连接恢复后自动重发
+WebSocket message sender
+Implements global WebSocket message sending functionality from any location, supports two sending modes:
+1. Direct sending mode: Returns failure immediately if connection fails
+2. Queue caching mode: Caches messages when connection fails, automatically retransmits when connection is restored
 
-使用示例：
-1. 直接发送消息（适合不需要保证送达的场景）
+Usage examples:
+1. Direct message sending (suitable for scenarios where delivery is not guaranteed)
    from local_agent.websocket.message_sender import send_message
    await send_message({"type": "status", "data": "running"})
 
-2. 使用队列发送消息（适合需要保证送达的重要消息）
+2. Queue-based message sending (suitable for important messages that require guaranteed delivery)
    from local_agent.websocket.message_sender import send_message_with_queue
    await send_message_with_queue({"type": "important", "data": "critical"}, max_retries=5)
 
-3. 发送带回调的消息
+3. Send message with callback
    async def callback(response):
-       print(f"收到响应: {response}")
+       print(f"Received response: {response}")
    
    await send_message_with_queue(
        {"type": "query", "data": "some_query"},
@@ -25,7 +25,7 @@ WebSocket消息发送器
        timeout=10
    )
 
-4. 检查连接状态
+4. Check connection status
    from local_agent.websocket.message_sender import is_connected
    if is_connected():
        await send_message({"type": "ping"})
@@ -42,75 +42,75 @@ from ..logger import get_logger
 
 @dataclass
 class PendingMessage:
-    """待发送消息"""
+    """Pending message to be sent"""
     message_id: str
     message: Dict[str, Any]
     timestamp: float
     response_callback: Optional[Callable] = None
     timeout: float = 30.0
     
-    # 重试相关字段（可选，用于带队列的消息）
+    # Retry-related fields (optional, for queued messages)
     retry_count: int = 0
     max_retries: int = 3
     last_retry_time: float = 0.0
 
 
 class WebSocketMessageSender:
-    """WebSocket消息发送器"""
+    """WebSocket message sender"""
     
     def __init__(self):
         self.logger = get_logger(__name__)
         
-        # WebSocket客户端引用
+        # WebSocket client reference
         self._websocket_client = None
         
-        # 待发送消息队列
+        # Pending message queue
         self._pending_messages: Dict[str, PendingMessage] = {}
         
-        # 锁，用于线程安全
+        # Lock for thread safety
         self._lock = asyncio.Lock()
         
-        # 消息ID计数器
+        # Message ID counter
         self._message_id_counter = 0
         
-        # 清理任务
+        # Cleanup task
         self._cleanup_task = None
         
-        self.logger.info("WebSocket消息发送器初始化完成")
+        self.logger.info("WebSocket message sender initialized")
     
     def set_websocket_client(self, websocket_client):
-        """设置WebSocket客户端引用"""
+        """Set WebSocket client reference"""
         self._websocket_client = websocket_client
-        self.logger.info("已设置WebSocket客户端引用")
+        self.logger.info("WebSocket client reference set")
         
-        # 注册连接恢复回调
+        # Register connection recovery callback
         if hasattr(websocket_client, 'on_connect_callback'):
-            # 检查是否已经注册过（通过检查当前回调是否是我们注册的）
+            # Check if already registered (by checking if current callback is the one we registered)
             current_callback = websocket_client.on_connect_callback
             
-            # 如果当前回调不是我们注册的，或者回调为None，则进行注册
+            # If current callback is not registered by us, or callback is None, then register
             if current_callback is None or not hasattr(current_callback, '__name__') or current_callback.__name__ != 'connection_restored_callback':
-                # 保存原有的回调
+                # Save original callback
                 original_callback = current_callback
                 
                 async def connection_restored_callback():
-                    # 调用原有的回调（如果有）
+                    # Call original callback (if exists)
                     if original_callback:
                         await original_callback()
-                    # 调用消息发送器的连接恢复处理
+                    # Call message sender's connection recovery handler
                     await self.on_connection_restored()
                 
                 websocket_client.on_connect_callback = connection_restored_callback
-                self.logger.info("已注册WebSocket连接恢复回调")
+                self.logger.info("WebSocket connection recovery callback registered")
             else:
-                self.logger.debug("WebSocket连接恢复回调已注册，跳过重复注册")
+                self.logger.debug("WebSocket connection recovery callback already registered, skipping duplicate registration")
         
-        # 启动清理任务
+        # Start cleanup task
         if self._cleanup_task is None:
             self._cleanup_task = asyncio.create_task(self._cleanup_expired_messages())
     
     def is_connected(self) -> bool:
-        """检查WebSocket连接状态"""
+        """Check WebSocket connection status"""
         if self._websocket_client is None:
             return False
         return self._websocket_client.is_connected()
@@ -119,28 +119,28 @@ class WebSocketMessageSender:
                          response_callback: Optional[Callable] = None,
                          timeout: float = 30.0) -> bool:
         """
-        发送WebSocket消息（直接发送，不进入队列）
+        Send WebSocket message (direct send, not queued)
         
         Args:
-            message: 消息内容（字典）
-            response_callback: 响应回调函数
-            timeout: 超时时间（秒）
+            message: Message content (dict)
+            response_callback: Response callback function
+            timeout: Timeout in seconds
             
         Returns:
-            bool: 是否成功发送
+            bool: Whether send was successful
         """
         if not self.is_connected():
-            self.logger.warning("WebSocket未连接，无法发送消息")
+            self.logger.warning("WebSocket not connected, unable to send message")
             return False
         
-        # 生成消息ID
+        # Generate message ID
         message_id = self._generate_message_id()
         
-        # 添加消息ID到消息中
+        # Add message ID to message
         message_with_id = message.copy()
         message_with_id['message_id'] = message_id
         
-        # 创建待发送消息
+        # Create pending message
         pending_message = PendingMessage(
             message_id=message_id,
             message=message_with_id,
@@ -151,20 +151,20 @@ class WebSocketMessageSender:
 
         
         try:
-            # 发送消息
+            # Send message
             sent_res = await self._websocket_client.send_message(json.dumps(message_with_id))
             if not sent_res:
-                # 添加到待发送队列
+                # Add to pending send queue
                 async with self._lock:
                     self._pending_messages[message_id] = pending_message
             
-            self.logger.debug(f"消息发送成功 (ID: {message_id}), 类型: {message.get('type', 'unknown')}")
+            self.logger.debug(f"Message sent successfully (ID: {message_id}), type: {message.get('type', 'unknown')}")
             return True
             
         except Exception as e:
-            self.logger.error(f"消息发送失败 (ID: {message_id}): {e}")
+            self.logger.error(f"Message send failed (ID: {message_id}): {e}")
             
-            # 从待发送队列中移除
+            # Remove from pending send queue
             async with self._lock:
                 self._pending_messages.pop(message_id, None)
             
@@ -175,25 +175,25 @@ class WebSocketMessageSender:
                                     timeout: float = 30.0,
                                     max_retries: int = 3) -> bool:
         """
-        发送WebSocket消息（带队列缓存和重发机制）
+        Send WebSocket message (with queue caching and retry mechanism)
         
         Args:
-            message: 消息内容（字典）
-            response_callback: 响应回调函数
-            timeout: 超时时间（秒）
-            max_retries: 最大重试次数
+            message: Message content (dict)
+            response_callback: Response callback function
+            timeout: Timeout in seconds
+            max_retries: Maximum retry attempts
             
         Returns:
-            bool: 是否成功发送或加入队列
+            bool: Whether send was successful or added to queue
         """
-        # 生成消息ID
+        # Generate message ID
         message_id = self._generate_message_id()
         
-        # 添加消息ID到消息中
+        # Add message ID to message
         message_with_id = message.copy()
         message_with_id['message_id'] = message_id
         
-        # 创建待发送消息（带重试信息）
+        # Create pending message (with retry info)
         pending_message = PendingMessage(
             message_id=message_id,
             message=message_with_id,
@@ -202,66 +202,66 @@ class WebSocketMessageSender:
             timeout=timeout
         )
         
-        # 添加重试信息
+        # Add retry info
         pending_message.retry_count = 0
         pending_message.max_retries = max_retries
         pending_message.last_retry_time = time.time()
 
-        # 立即尝试发送
+        # Try sending immediately
         if self._websocket_client:
             cent_res = await self._websocket_client.send_message(pending_message)
             if not cent_res:
-                # 添加到待发送队列
+                # Add to pending send queue
                 async with self._lock:
                     self._pending_messages[message_id] = pending_message
 
 
     async def _try_send_message(self, pending_message: PendingMessage) -> bool:
-        """尝试发送消息，失败则加入重试队列"""
+        """Try to send message, add to retry queue if failed"""
         if not self.is_connected():
-            # 连接未建立，记录日志但不移除消息，等待连接恢复后重试
-            self.logger.info(f"WebSocket未连接，消息已加入队列 (ID: {pending_message.message_id}), "
-                           f"类型: {pending_message.message.get('type', 'unknown')}")
-            return True  # 返回True表示消息已接受处理
+            # Connection not established, log but don't remove message, wait for connection recovery to retry
+            self.logger.info(f"WebSocket not connected, message added to queue (ID: {pending_message.message_id}), "
+                           f"type: {pending_message.message.get('type', 'unknown')}")
+            return True  # Return True to indicate message has been accepted for processing
         
         try:
-            # 发送消息
+            # Send message
             await self._websocket_client.send_message(json.dumps(pending_message.message))
             
-            self.logger.debug(f"消息发送成功 (ID: {pending_message.message_id}), "
-                            f"类型: {pending_message.message.get('type', 'unknown')}")
+            self.logger.debug(f"Message sent successfully (ID: {pending_message.message_id}), "
+                            f"type: {pending_message.message.get('type', 'unknown')}")
             return True
             
         except Exception as e:
-            # 发送失败，处理重试逻辑
+            # Send failed, handle retry logic
             pending_message.retry_count += 1
             pending_message.last_retry_time = time.time()
             
             if pending_message.retry_count <= pending_message.max_retries:
-                # 还有重试次数，记录日志并保持消息在队列中
-                self.logger.warning(f"消息发送失败，将进行第{pending_message.retry_count}次重试 "
+                # Still have retry attempts, log and keep message in queue
+                self.logger.warning(f"Message send failed, will retry {pending_message.retry_count} times "
                                   f"(ID: {pending_message.message_id}): {e}")
                 
-                # 计算下次重试时间（指数退避）
-                retry_delay = min(2 ** pending_message.retry_count, 60)  # 最大60秒
+                # Calculate next retry time (exponential backoff)
+                retry_delay = min(2 ** pending_message.retry_count, 60)  # Maximum 60 seconds
                 
-                # 异步安排重试
+                # Asynchronously schedule retry
                 asyncio.create_task(self._retry_message(pending_message, retry_delay))
                 return True
             else:
-                # 重试次数用尽，移除消息
-                self.logger.error(f"消息发送失败，重试次数用尽 (ID: {pending_message.message_id}): {e}")
+                # Retry attempts exhausted, remove message
+                self.logger.error(f"Message send failed, retry attempts exhausted (ID: {pending_message.message_id}): {e}")
                 
                 async with self._lock:
                     self._pending_messages.pop(pending_message.message_id, None)
                 
-                # 执行失败回调（如果有）
+                # Execute failure callback (if exists)
                 if pending_message.response_callback:
                     try:
                         error_response = {
                             'type': 'error',
                             'response_to': pending_message.message_id,
-                            'error': f'消息发送失败，重试次数用尽: {e}'
+                            'error': f'Message sending failed, retry attempts exhausted: {e}'
                         }
                         
                         if asyncio.iscoroutinefunction(pending_message.response_callback):
@@ -270,102 +270,102 @@ class WebSocketMessageSender:
                             pending_message.response_callback(error_response)
                             
                     except Exception as callback_error:
-                        self.logger.error(f"失败回调执行失败 (消息ID: {pending_message.message_id}): {callback_error}")
+                        self.logger.error(f"Failed callback execution failed (message ID: {pending_message.message_id}): {callback_error}")
                 
                 return False
 
     async def _retry_message(self, pending_message: PendingMessage, delay: float):
-        """延迟重试发送消息"""
+        """Retry sending message after delay"""
         await asyncio.sleep(delay)
         
-        # 检查消息是否还在队列中（可能已被处理或过期）
+        # Check if message is still in queue (may have been processed or expired)
         async with self._lock:
             if pending_message.message_id not in self._pending_messages:
                 return
         
-        # 重新尝试发送
+        # Try sending again
         await self._try_send_message(pending_message)
 
     async def on_connection_restored(self):
-        """WebSocket连接恢复时的回调，重发队列中的消息"""
-        self.logger.info("WebSocket连接已恢复，开始重发队列中的消息")
+        """WebSocket connection recovery callback, resend queued messages"""
+        self.logger.info("WebSocket connection restored, starting to resend queued messages")
         
-        # 获取当前队列中的所有消息
+        # Get all messages in current queue
         async with self._lock:
             messages_to_retry = list(self._pending_messages.values())
         
-        # 重发所有消息
+        # Resend all messages
         for pending_message in messages_to_retry:
-            # 重置重试计数（连接恢复后重新开始计数）
+            # Reset retry count (start counting again after connection recovery)
             pending_message.retry_count = 0
             pending_message.last_retry_time = time.time()
             
-            # 异步重发
+            # Asynchronously resend
             asyncio.create_task(self._try_send_message(pending_message))
     
     async def handle_response(self, response_message: Dict[str, Any]):
         """
-        处理响应消息
+        Process response message
         
         Args:
-            response_message: 响应消息
+            response_message: Response message
         """
         message_id = response_message.get('response_to')
         if not message_id:
             return
         
-        # 查找对应的待发送消息
+        # Find corresponding pending message
         async with self._lock:
             pending_message = self._pending_messages.pop(message_id, None)
         
         if pending_message and pending_message.response_callback:
             try:
-                # 执行回调函数
+                # Execute callback function
                 if asyncio.iscoroutinefunction(pending_message.response_callback):
                     await pending_message.response_callback(response_message)
                 else:
                     pending_message.response_callback(response_message)
                 
-                self.logger.debug(f"响应回调执行成功 (消息ID: {message_id})")
+                self.logger.debug(f"Response callback executed successfully (message ID: {message_id})")
                 
             except Exception as e:
-                self.logger.error(f"响应回调执行失败 (消息ID: {message_id}): {e}")
+                self.logger.error(f"Response callback execution failed (message ID: {message_id}): {e}")
     
     def _generate_message_id(self) -> str:
-        """生成消息ID"""
+        """Generate message ID"""
         self._message_id_counter += 1
         return f"msg_{self._message_id_counter}_{int(time.time())}"
     
     async def _cleanup_expired_messages(self):
-        """清理过期的待发送消息"""
+        """Clean up expired pending messages"""
         while True:
             try:
-                await asyncio.sleep(10)  # 每10秒清理一次
+                await asyncio.sleep(10)  # Clean up every 10 seconds
                 
                 current_time = time.time()
                 expired_messages = []
                 
-                # 查找过期的消息
+                # Find expired messages
                 async with self._lock:
                     for message_id, pending_message in self._pending_messages.items():
                         if current_time - pending_message.timestamp > pending_message.timeout:
                             expired_messages.append(message_id)
                 
-                # 清理过期消息
+                # Clean up expired messages
                 for message_id in expired_messages:
                     async with self._lock:
                         expired_message = self._pending_messages.pop(message_id, None)
                     
                     if expired_message:
-                        self.logger.warning(f"消息已过期 (ID: {message_id}), 类型: {expired_message.message.get('type', 'unknown')}")
+                        self.logger.warning(f"Message expired (ID: {message_id}), type: {expired_message.message.get('type', 'unknown')}")
                         
-                        # 执行超时回调（如果有）
+                        # Execute timeout callback (if exists)
                         if expired_message.response_callback:
                             try:
                                 timeout_response = {
                                     'type': 'timeout',
                                     'response_to': message_id,
-                                    'error': '消息响应超时'
+                                    'error': 'Message response timeout'
                                 }
                                 
                                 if asyncio.iscoroutinefunction(expired_message.response_callback):
@@ -374,54 +374,54 @@ class WebSocketMessageSender:
                                     expired_message.response_callback(timeout_response)
                                     
                             except Exception as e:
-                                self.logger.error(f"超时回调执行失败 (消息ID: {message_id}): {e}")
+                                self.logger.error(f"Timeout callback execution failed (message ID: {message_id}): {e}")
                 
             except Exception as e:
-                self.logger.error(f"清理过期消息时发生错误: {e}")
+                self.logger.error(f"Error occurred while cleaning expired messages: {e}")
     
     def get_pending_message_count(self) -> int:
-        """获取待发送消息数量"""
+        """Get pending message count"""
         return len(self._pending_messages)
     
     def clear_pending_messages(self):
-        """清空待发送消息队列"""
+        """Clear pending message queue"""
         async def clear():
             async with self._lock:
                 cleared_count = len(self._pending_messages)
                 self._pending_messages.clear()
                 
             if cleared_count > 0:
-                self.logger.info(f"已清空 {cleared_count} 条待发送消息")
+                self.logger.info(f"Cleared {cleared_count} pending messages")
         
         asyncio.create_task(clear())
 
 
-# 创建全局单例实例
+# Create global singleton instance
 _message_sender_instance = None
 
 
 def get_message_sender() -> WebSocketMessageSender:
-    """获取消息发送器实例（单例模式）"""
+    """Get message sender instance (singleton pattern)"""
     global _message_sender_instance
     if _message_sender_instance is None:
         _message_sender_instance = WebSocketMessageSender()
     return _message_sender_instance
 
 
-# 提供便捷的全局函数
+# Provide convenient global functions
 async def send_message(message: Dict[str, Any], 
                      response_callback: Optional[Callable] = None,
                      timeout: float = 30.0) -> bool:
     """
-    发送WebSocket消息（全局函数，直接发送不进入队列）
+    Send WebSocket message (global function, direct send not queued)
     
     Args:
-        message: 消息内容（字典）
-        response_callback: 响应回调函数
-        timeout: 超时时间（秒）
+        message: Message content (dict)
+        response_callback: Response callback function
+        timeout: Timeout in seconds
         
     Returns:
-        bool: 是否成功发送
+        bool: Whether send was successful
     """
     sender = get_message_sender()
     return await sender.send_message(message, response_callback, timeout)
@@ -432,34 +432,34 @@ async def send_message_with_queue(message: Dict[str, Any],
                                 timeout: float = 30.0,
                                 max_retries: int = 3) -> bool:
     """
-    发送WebSocket消息（全局函数，带队列缓存和重发机制）
+    Send WebSocket message (global function, with queue caching and retry mechanism)
     
     Args:
-        message: 消息内容（字典）
-        response_callback: 响应回调函数
-        timeout: 超时时间（秒）
-        max_retries: 最大重试次数
+        message: Message content (dict)
+        response_callback: Response callback function
+        timeout: Timeout in seconds
+        max_retries: Maximum retry attempts
         
     Returns:
-        bool: 是否成功发送或加入队列
+        bool: Whether send was successful or added to queue
     """
     sender = get_message_sender()
     return await sender.send_message_with_queue(message, response_callback, timeout, max_retries)
 
 
 def is_connected() -> bool:
-    """检查WebSocket连接状态（全局函数）"""
+    """Check WebSocket connection status (global function)"""
     sender = get_message_sender()
     return sender.is_connected()
 
 
 def get_pending_message_count() -> int:
-    """获取待发送消息数量（全局函数）"""
+    """Get pending message count (global function)"""
     sender = get_message_sender()
     return sender.get_pending_message_count()
 
 
 def clear_pending_messages():
-    """清空待发送消息队列（全局函数）"""
+    """Clear pending message queue (global function)"""
     sender = get_message_sender()
     sender.clear_pending_messages()

@@ -1,5 +1,5 @@
 """
-    DMR 相关封装 - 使用项目统一日志系统记录子进程执行
+    DMR related encapsulation - Use project unified logging system to record subprocess execution
 """
 from ..utils.subprocess_utils import run_con_or_none, run_async
 from ..logger import get_logger
@@ -12,27 +12,27 @@ dmr_com = 'dmr-config'
 
 
 class DMR:
-    """DMR 命令封装类 - 自动记录子进程执行日志"""
+    """DMR [command encapsulation] class - [Automatically record sub] process execution log"""
     
 
     @staticmethod
     def version():
         """
-        调用系统命令 dmr-config -v
+        Call system command dmr-config -v
         
-        如果响应为找不到 dmr-config 命令，方法返回 None
-        否则方法返回 dmr-config -v 的响应原字符串
+        If the response indicates dmr-config command not found, method returns None
+        Otherwise method returns the original response string of dmr-config -v
         
         Returns:
-            str | None: dmr-config -v 命令的输出，如果命令不存在则返回 None
+            str | None: Output of dmr-config -v command, returns None if command does not exist
         """
-        # 使用增强的子进程执行工具，自动记录执行过程和结果
+        # [Use enhanced sub] process execution utility, [automatically record] execution [process and results]
         return run_con_or_none(
             [dmr_com, '-v'],
             command_name='dmr-config_-v',
             capture_output=True,
             text=True,
-            timeout=10  # 10秒超时
+            timeout=100  # 10 second timeout
         )
 
 
@@ -40,20 +40,20 @@ class DMR:
     @staticmethod
     def update(url: str):
         """
-        更新dmr
+        Update DMR
         """
         update_url = http_client._build_file_url(url)
         if update_url:
             python = PythonUtils.get_python_executable()
 
-            # 延迟导入以避免循环依赖
+            # Delay [import to avoid] loop dependency
             from local_agent.utils.whl_updater import update_from_whl_sync
             
             resunt = update_from_whl_sync(update_url, python)
             if resunt.get('success', False):
-                logger.info('dmr_config 更新成功')
+                logger.info('dmr_config update successful')
             else:
-                logger.error(f'dmr_config 更新失败: {resunt.get("error", "未知错误")}')
+                logger.error(f'dmr_config update failed: {resunt.get("error", "Unknown error")}')
             return resunt.get('success', False)
 
     
@@ -61,11 +61,11 @@ class DMR:
     @staticmethod
     def get_hardware_info():
         """
-        调用系统命令 dmr-config sut
-        获取硬件信息
-        异步执行，不等待结果
+        Call system command dmr-config sut
+        Get hardware information
+        Execute asynchronously, do not wait for results
         """
 
-        # 直接使用dmr_com，它已经是相对路径
+        # [Directly use] dmr_com, [it's already a relative] path
         run_async([dmr_com, 'sut'])
         

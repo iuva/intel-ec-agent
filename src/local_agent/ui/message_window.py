@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-本地消息窗口组件
-提供基于tkinter的消息框功能，替代原来的exe调用
+Local message window component
+Provides tkinter-based message box functionality, replacing the original exe calls
 """
 
 import tkinter as tk
@@ -16,7 +16,7 @@ from enum import Enum
 
 
 class MessageType(Enum):
-    """消息类型枚举"""
+    """Message type enumeration"""
     INFO = "info"
     WARNING = "warning"
     ERROR = "error"
@@ -24,28 +24,28 @@ class MessageType(Enum):
 
 
 class ButtonType(Enum):
-    """按钮类型枚举"""
-    OK = "确定"
-    CANCEL = "取消"
-    YES = "是"
-    NO = "否"
-    RETRY = "重试"
-    IGNORE = "忽略"
+    """Button type enumeration"""
+    OK = "OK"
+    CANCEL = "Cancel"
+    YES = "Yes"
+    NO = "No"
+    RETRY = "Retry"
+    IGNORE = "Ignore"
 
 
 @dataclass
 class MessageResult:
-    """消息框结果"""
+    """Message box result"""
     success: bool
     user_choice: Optional[str] = None
     error: Optional[str] = None
 
 
 class MessageWindow:
-    """本地消息窗口类"""
+    """Local message window class"""
     
     def __init__(self):
-        """初始化消息窗口"""
+        """Initialize message window"""
         self.logger = logging.getLogger(__name__)
         self._root = None
         self._thread = None
@@ -54,62 +54,62 @@ class MessageWindow:
         self._is_running = False
         
     def _ensure_tk_root(self):
-        """确保tkinter根窗口存在"""
+        """Ensure tkinter root window exists"""
         if self._root is None:
-            # 创建隐藏的根窗口
+            # Create hidden root window
             self._root = tk.Tk()
-            self._root.withdraw()  # 隐藏主窗口
-            self._root.title("消息框服务")
+            self._root.withdraw()  # Hide main window
+            self._root.title("Message Box Service")
             
     def _create_custom_messagebox(self, 
                                  message: str, 
-                                 title: str = "系统提示",
+                                 title: str = "System Prompt",
                                  confirm_show: bool = True,
                                  cancel_show: bool = False,
-                                 confirm_text: str = "确定",
-                                 cancel_text: str = "取消") -> Optional[str]:
-        """创建自定义消息框"""
+                                 confirm_text: str = "OK",
+                                 cancel_text: str = "Cancel") -> Optional[str]:
+        """Create custom message box"""
         try:
-            # 创建顶层窗口
+            # Create top-level window
             top = tk.Toplevel(self._root)
             top.title(title)
             top.geometry("700x300")
             top.resizable(False, False)
             
-            # 设置窗口属性确保始终在最前
-            top.attributes('-topmost', True)  # 始终置顶
-            top.transient(self._root)         # 设置为主窗口的子窗口
-            top.grab_set()                    # 独占焦点
+            # Set up window attributes to ensure always on top
+            top.attributes('-topmost', True)  # Always on top
+            top.transient(self._root)         # Set as child window of main window
+            top.grab_set()                    # Exclusive focus
             
-            # 禁用关闭按钮但不移除标题栏
-            top.protocol('WM_DELETE_WINDOW', lambda: None)  # 禁用关闭按钮
+            # Disable close button but keep title bar
+            top.protocol('WM_DELETE_WINDOW', lambda: None)  # Disable close button
             
-            # 窗口获得焦点时重新置顶
+            # Re-top window when it gains focus
             def on_focus(event):
                 top.attributes('-topmost', True)
             top.bind('<FocusIn>', on_focus)
             
-            # 设置窗口图标（如果有）
+            # Set up window icon (if available)
             try:
                 top.iconbitmap("")
             except:
                 pass
             
-            # 创建消息内容
+            # Create message content
             message_frame = ttk.Frame(top, padding="10")
             message_frame.pack(fill=tk.BOTH, expand=True)
             
-            # 消息文本
+            # Message text
             message_label = ttk.Label(
                 message_frame, 
                 text=message, 
                 wraplength=350,
                 justify=tk.CENTER,
-                font=("微软雅黑", 10)
+                font=("Microsoft YaHei", 10)
             )
             message_label.pack(pady=20)
             
-            # 按钮框架
+            # Button frame
             button_frame = ttk.Frame(message_frame)
             button_frame.pack(side=tk.BOTTOM, pady=10)
             
@@ -119,7 +119,7 @@ class MessageWindow:
                 result[0] = choice
                 top.destroy()
             
-            # 添加确认按钮
+            # Add confirm button
             if confirm_show:
                 confirm_btn = ttk.Button(
                     button_frame, 
@@ -128,7 +128,7 @@ class MessageWindow:
                 )
                 confirm_btn.pack(side=tk.LEFT, padx=5)
             
-            # 添加取消按钮
+            # Add cancel button
             if cancel_show:
                 cancel_btn = ttk.Button(
                     button_frame, 
@@ -137,69 +137,69 @@ class MessageWindow:
                 )
                 cancel_btn.pack(side=tk.LEFT, padx=5)
             
-            # 如果没有按钮，添加默认确定按钮
+            # If no buttons, add default confirm button
             if not confirm_show and not cancel_show:
                 ok_btn = ttk.Button(
                     button_frame, 
-                    text="确定", 
-                    command=lambda: on_button_click("确定")
+                    text=confirm_text, 
+                    command=lambda: on_button_click(confirm_text)
                 )
                 ok_btn.pack(side=tk.LEFT, padx=5)
             
-            # 窗口居中 - 确保窗口完全渲染后再计算位置
-            top.update()  # 强制更新所有挂起的任务
+            # Center window - ensure window is fully rendered before calculating position
+            top.update()  # Force update all pending tasks
             top.update_idletasks()
             
-            # 获取准确的窗口尺寸
+            # Get accurate window dimensions
             width = top.winfo_reqwidth()
             height = top.winfo_reqheight()
             
-            # 计算居中位置
+            # Calculate center position
             x = (top.winfo_screenwidth() - width) // 2
             y = (top.winfo_screenheight() - height) // 2
             
-            # 设置窗口位置和尺寸
+            # Set window position and dimensions
             top.geometry(f"{width}x{height}+{x}+{y}")
             
-            # 等待窗口关闭
+            # Wait for window to close
             top.wait_window(top)
             
             return result[0]
             
         except Exception as e:
-            self.logger.error(f"创建自定义消息框失败: {e}")
+            self.logger.error(f"Create custom message box failed: {e}")
             return None
     
     def show_message(self, 
                     message: str, 
-                    title: str = "系统提示",
+                    title: str = "System Prompt",
                     confirm_show: bool = True,
                     cancel_show: bool = False,
-                    confirm_text: str = "确定",
-                    cancel_text: str = "取消",
+                    confirm_text: str = "OK",
+                    cancel_text: str = "Cancel",
                     timeout: int = 0) -> MessageResult:
-        """显示消息框
+        """Show message box
         
         Args:
-            message: 消息内容
-            title: 标题
-            confirm_show: 是否显示确认按钮
-            cancel_show: 是否显示取消按钮
-            confirm_text: 确认按钮文本
-            cancel_text: 取消按钮文本
-            timeout: 超时时间（秒），0表示不超时
+            message: Message content
+            title: Title
+            confirm_show: Whether to show confirm button
+            cancel_show: Whether to show cancel button
+            confirm_text: Confirm button text
+            cancel_text: Cancel button text
+            timeout: Timeout time (seconds), 0 means no timeout
             
         Returns:
-            MessageResult: 消息框结果
+            MessageResult: Message box result
         """
         try:
             self._ensure_tk_root()
             
-            # 设置超时处理
+            # Set up timeout handling
             if timeout > 0:
                 self._setup_timeout(timeout)
             
-            # 在主线程中显示消息框
+            # Show message box in main thread
             user_choice = self._create_custom_messagebox(
                 message=message,
                 title=title,
@@ -209,30 +209,30 @@ class MessageWindow:
                 cancel_text=cancel_text
             )
             
-            # 取消超时处理
+            # Cancel timeout handling
             if timeout > 0:
                 self._cancel_timeout()
             
             if user_choice is not None:
-                self.logger.info(f"用户选择了: {user_choice}")
+                self.logger.info(f"User selected: {user_choice}")
                 return MessageResult(success=True, user_choice=user_choice)
             else:
-                return MessageResult(success=False, error="用户未选择或消息框关闭")
+                return MessageResult(success=False, error="User did not select or message box closed")
                 
         except Exception as e:
-            self.logger.error(f"显示消息框失败: {e}")
+            self.logger.error(f"Show message box failed: {e}")
             return MessageResult(success=False, error=str(e))
     
     def _setup_timeout(self, timeout: int):
-        """设置超时处理"""
+        """Set up timeout handling"""
         def timeout_handler():
             time.sleep(timeout)
             if self._is_running:
-                # 超时后自动关闭消息框
+                # Auto close message box after timeout
                 try:
                     if self._root:
-                        # 这里可以添加超时处理逻辑
-                        self.logger.warning(f"消息框超时，自动关闭")
+                        # Here you can add timeout handling logic
+                        self.logger.warning(f"Message box timeout, auto closing")
                 except:
                     pass
         
@@ -240,52 +240,52 @@ class MessageWindow:
         self._timeout_thread.start()
     
     def _cancel_timeout(self):
-        """取消超时处理"""
+        """Cancel timeout handling"""
         self._is_running = False
     
-    def show_info(self, message: str, title: str = "信息提示") -> MessageResult:
-        """显示信息对话框"""
+    def show_info(self, message: str, title: str = "Information Prompt") -> MessageResult:
+        """Show info dialog"""
         return self.show_message(
             message=message,
             title=title,
             confirm_show=True,
             cancel_show=False,
-            confirm_text="确定"
+            confirm_text="OK"
         )
     
-    def show_warning(self, message: str, title: str = "警告") -> MessageResult:
-        """显示警告对话框"""
+    def show_warning(self, message: str, title: str = "Warning") -> MessageResult:
+        """Show warning dialog"""
         return self.show_message(
             message=message,
             title=title,
             confirm_show=True,
             cancel_show=False,
-            confirm_text="确定"
+            confirm_text="OK"
         )
     
-    def show_confirm(self, message: str, title: str = "确认操作") -> MessageResult:
-        """显示确认对话框"""
+    def show_confirm(self, message: str, title: str = "Confirm Operation") -> MessageResult:
+        """Show confirm dialog"""
         return self.show_message(
             message=message,
             title=title,
             confirm_show=True,
             cancel_show=True,
-            confirm_text="确认",
-            cancel_text="取消"
+            confirm_text="OK",
+            cancel_text="Cancel"
         )
     
-    def show_error(self, message: str, title: str = "错误") -> MessageResult:
-        """显示错误对话框"""
+    def show_error(self, message: str, title: str = "Error") -> MessageResult:
+        """Show error dialog"""
         return self.show_message(
             message=message,
             title=title,
             confirm_show=True,
             cancel_show=False,
-            confirm_text="确定"
+            confirm_text="OK"
         )
     
     def cleanup(self):
-        """清理资源"""
+        """Clean up resources"""
         self._is_running = False
         if self._root:
             try:
@@ -297,5 +297,5 @@ class MessageWindow:
 
 
 def create_message_window() -> MessageWindow:
-    """创建消息窗口实例"""
+    """Create message window instance"""
     return MessageWindow()

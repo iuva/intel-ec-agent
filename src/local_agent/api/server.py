@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-FastAPI服务器
-启动和管理FastAPI服务
+FastAPI server
+Start and manage FastAPI services
 """
 
 import asyncio
@@ -19,7 +19,7 @@ from ..logger import get_logger
 
 
 class APIServer:
-    """API服务器管理类"""
+    """API service [server] management class"""
     
     def __init__(self):
         self.config = get_config()
@@ -28,16 +28,16 @@ class APIServer:
         self.server = None
     
     def create_app(self) -> FastAPI:
-        """创建FastAPI应用"""
+        """Create FastAPI application"""
         app = FastAPI(
             title=self.config.get('app_name', 'Local Agent Service'),
-            description="本地代理服务API接口",
+            description="Local Agent Service API Interface",
             version=self.config.get('version', '1.0.0'),
             docs_url="/docs",
             redoc_url="/redoc"
         )
         
-        # 添加CORS中间件
+        # [Add] CORS [middleware]
         app.add_middleware(
             CORSMiddleware,
             allow_origins=["*"],
@@ -46,43 +46,43 @@ class APIServer:
             allow_headers=["*"],
         )
         
-        # 添加API访问日志中间件
+        # [Add] API [access] log [middleware]
         @app.middleware("http")
         async def log_requests(request: Request, call_next):
-            # 记录请求信息
+            # [Record] request info
             client_host = request.client.host if request.client else "unknown"
             logger = get_logger("local_agent.api.access")
             
-            logger.info(f"API请求: {request.method} {request.url.path} 来自 {client_host}")
+            logger.info(f"API request: {request.method} {request.url.path} from {client_host}")
             
-            # 处理请求
+            # [Process] request
             response = await call_next(request)
             
-            # 记录响应信息
-            logger.info(f"API响应: {request.method} {request.url.path} 状态码 {response.status_code}")
+            # [Record] response info
+            logger.info(f"API response: {request.method} {request.url.path} status code {response.status_code}")
             
             return response
         
-        # 创建根路由（仅用于健康检查）
+        # Create [root router] ([only for health] check)
         root_router = APIRouter()
         
-        # 定义健康检查响应模型
+        # [Define health] check response [model]
         class HealthResponse(BaseModel):
-            """健康检查响应模型"""
+            """[Health] check [response model]"""
             status: str
             timestamp: Any
             version: str
             system_info: Dict[str, Any]
             
-        # 从原路由中获取健康检查端点并添加到根路由
-        # 注意：这种方式可以避免修改routes.py文件的结构
+        # [Get health] check [endpoint from original router and add to root router]
+        # [Note]: [This method avoids modifying] routes.py file [structure]
         @root_router.get("/health", response_model=HealthResponse)
         async def health_check():
-            """健康检查接口"""
+            """[Health] check [interface]"""
             logger = get_logger(__name__)
-            logger.info("健康检查请求")
+            logger.info("Health check request")
             
-            # 获取系统信息
+            # Get system info
             import psutil
             import platform
             from datetime import datetime
@@ -99,7 +99,7 @@ class APIServer:
                     "available": memory.available,
                     "percent": memory.percent
                 },
-                "v": '更新前',
+                "v": 'Before update',
                 "cpu_usage": cpu_percent,
                 "disk_usage": {
                     "total": disk.total,
@@ -115,37 +115,37 @@ class APIServer:
                 "system_info": system_info
             }
         
-        # 注册根路由
+        # [Register root router]
         app.include_router(root_router)
         
-        # 注册其他API路由
+        # [Register other] API [routes]
         app.include_router(router, prefix="/api/v1")
         
-        # 添加启动和关闭事件
+        # [Add] startup [and shutdown events]
         @app.on_event("startup")
         async def startup_event():
-            self.logger.info("FastAPI服务器启动中...")
+            self.logger.info("FastAPI service starting...")
         
         @app.on_event("shutdown")
         async def shutdown_event():
-            self.logger.info("FastAPI服务器关闭中...")
+            self.logger.info("FastAPI service shutting down...")
         
         self.app = app
         return app
     
     async def start(self, debug=False):
-        """启动API服务器"""
+        """Start API service [server]"""
         if self.app is None:
             self.create_app()
         
-        # 关键优化：检查端口是否已被占用
-        # 避免与双进程保活机制中的其他进程冲突
+        # [Key optimization]: Check port [if it's already occupied]
+        # [Avoid conflicts with other] processes [in dual-process keep-alive mechanism]
         import socket
         
         host = self.config.get('api_host', '0.0.0.0')
         port = self.config.get('api_port', 8000)
         
-        # 检查端口是否可用
+        # Check port [availability]
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.settimeout(2)
@@ -153,26 +153,26 @@ class APIServer:
             sock.close()
             
             if result == 0:
-                self.logger.warning(f"端口 {port} 已被占用，FastAPI服务器将不会启动")
-                self.logger.info("这是双进程保活机制的正常行为，确保只有一个进程运行服务")
-                return  # 端口被占用，不启动服务器
+                self.logger.warning(f"Port {port} is already occupied, FastAPI service will not start")
+                self.logger.info("This is normal behavior for dual-process keep-alive mechanism, ensuring only one process runs the service")
+                return  # Port occupied, do not start server
                 
         except Exception as e:
-            self.logger.warning(f"端口检查失败: {e}")
+            self.logger.warning(f"Port checking failed: {e}")
         
-        # 在debug模式下的特殊配置
+        # [Special] configuration [in] debug [mode]
         if debug:
-            self.logger.info("启用API服务器debug模式: 启用热重载，设置日志级别为debug")
-            # 临时修改配置以支持debug模式
+            self.logger.info("Enabling API server debug mode: enabling hot reload, setting log level to debug")
+            # [Temporarily modify] configuration [to support] debug [mode]
             reload = True
             log_level = 'debug'
-            workers = 1  # 调试模式下只能有一个worker
+            workers = 1  # Only one worker in debug mode
         else:
             reload = self.config.get('api_reload', False)
             log_level = self.config.get('log_level', 'info').lower()
             workers = self.config.get('api_workers', 1)
         
-        # 优化uvicorn配置，提高与双进程保活机制的兼容性
+        # [Optimize] uvicorn configuration, [improve compatibility with] dual-process [keep-alive mechanism]
         config = uvicorn.Config(
             app=self.app,
             host=host,
@@ -181,41 +181,41 @@ class APIServer:
             workers=workers,
             log_level=log_level,
             access_log=True,
-            # 关键优化：添加优雅关闭和超时配置
+            # [Key optimization]: [Add graceful shutdown and] timeout configuration
             timeout_keep_alive=5,
             timeout_notify=30,
             timeout_graceful_shutdown=10,
-            # 使用asyncio事件循环，提高稳定性
+            # [Use] asyncio [event] loop, [improve stability]
             loop="asyncio",
         )
         
         self.server = uvicorn.Server(config)
         
-        self.logger.info(f"启动FastAPI服务器: {host}:{port}")
-        self.logger.info(f"API文档地址: http://{host}:{port}/docs")
+        self.logger.info(f"Starting FastAPI service: {host}:{port}")
+        self.logger.info(f"API documentation address: http://{host}:{port}/docs")
         
         try:
             await self.server.serve()
         except Exception as e:
-            self.logger.error(f"FastAPI服务器启动失败: {e}")
-            # 服务器启动失败时，记录错误但不抛出异常
-            # 让双进程保活机制决定是否重启进程
-            self.logger.info("FastAPI服务器启动失败，但进程将继续运行以支持其他功能")
+            self.logger.error(f"FastAPI service startup failed: {e}")
+            # When server startup [fails], [record] error [but don't throw] exception
+            # [Let the] dual-process [keep-alive mechanism decide whether to] restart process
+            self.logger.info("FastAPI service startup failed, but process will continue to run to support other functions")
     
     async def stop(self):
-        """停止API服务器"""
+        """Stop API service [server]"""
         if self.server:
-            self.logger.info("正在停止FastAPI服务器...")
+            self.logger.info("Stopping FastAPI service...")
             self.server.should_exit = True
             await self.server.shutdown()
-            self.logger.info("FastAPI服务器已停止")
+            self.logger.info("FastAPI service stopped")
     
     def is_running(self) -> bool:
-        """检查服务器是否正在运行"""
+        """Check service [server if it's running]"""
         return self.server is not None and self.server.started
     
     def get_server_info(self) -> dict:
-        """获取服务器信息"""
+        """Get service [server] info"""
         return {
             "host": self.config.get('api_host', '0.0.0.0'),
             "port": self.config.get('api_port', 8000),
@@ -225,6 +225,6 @@ class APIServer:
 
 
 async def start_api_server():
-    """启动API服务器的便捷函数"""
+    """Start API service [server convenience] function"""
     server = APIServer()
     await server.start()

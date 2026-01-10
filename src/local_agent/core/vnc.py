@@ -12,14 +12,14 @@ from pydantic import BaseModel
 logger = get_logger(__name__)
 
 class VncInfo(BaseModel):
-    """EK结果汇报请求模型"""
+    """EK [result reporting request model]"""
     User: str
     Address: str
     Permissions: str
 
 class VncRes(BaseModel):
-    """VNC服务状态结果模型"""
-    state: int # 0: 成功, 1: 失败
+    """VNC service [status result model]"""
+    state: int # 0: Success, 1: Failure
     err_msg: str
     Processes: List[VncInfo]
 
@@ -29,9 +29,9 @@ class VNC:
     @staticmethod
     def is_connecting() -> bool:
         """
-        检查是否有 VNC 连接
+        Check if VNC connection exists
         """
-        logger.debug("是否有vnc连接")
+        logger.debug("Check if VNC is connected")
         res = VNC.get_connect_list()
         return res.state == 0 and len(res.Processes) > 0
 
@@ -40,101 +40,101 @@ class VNC:
     @staticmethod
     def get_connect_list(flag: bool = True) -> VncRes:
         """
-        调用系统命令 vncserver -list
-        获取当前连接的 VNC 会话列表
+        Call system command vncserver -list
+        Get currently connected VNC session list
         """
         
-        logger.debug("vnc连接列表")
+        logger.debug("VNC connection list")
         vnc_path = VNC.get_vncserver_path()
         if not vnc_path:
-            return VncRes(state=1, err_msg="未找到 vncserver 可执行文件", Processes=[])
+            return VncRes(state=1, err_msg="vncserver executable file not found", Processes=[])
 
-        # 使用增强的子进程执行工具，自动记录执行过程和结果
+        # [Use enhanced sub] process execution utility, [automatically records] execution [process and results]
         output = run_as_admin(
             [vnc_path, '-service', '-getconnections'],
             command_name='vncserver_-getconnections',
             capture_output=True,
             text=True,
-            timeout=10  # 10秒超时
+            timeout=10  # 10 second timeout
         )
-        logger.debug(f"执行结果：{output}{type(output)}")
+        logger.debug(f"Execution result: {output}{type(output)}")
 
-        # 是否为json格式
+        # [Whether it is] JSON [format]
         try:
             connections = json.loads(output)
-            logger.debug(f"执行结果：{connections}")
+            logger.debug(f"Execution result: {connections}")
 
             return VncRes(state=0, err_msg="", Processes=connections)
         except Exception as e:
-            # 疑似服务没启动
+            # [Suspected] service [not] started
             VNC.start_vncserver()
             if flag:
                 return VNC.get_connect_list(False)
             else:
-                return VncRes(state=1, err_msg="获取连接列表失败", Processes=[])
+                return VncRes(state=1, err_msg="Failed to get connection list", Processes=[])
 
 
 
     @staticmethod
     def check_vncserver_status(flag: bool = True) -> VncRes:
-        """检查 VNC 服务状态"""
+        """Check VNC service [status]"""
 
-        logger.debug("获取vnc服务状态")
+        logger.debug("Get VNC service status")
         vnc_path = VNC.get_vncserver_path()
         if not vnc_path:
-            return VncRes(state=1, err_msg="未找到 vncserver 可执行文件", Processes=[])
+            return VncRes(state=1, err_msg="vncserver executable file not found", Processes=[])
         
-        # 服务是否启动
+        # Service [whether] started
         
         output = run_as_admin(
             [vnc_path, '-service', '-status'],
             command_name='vncserver_-status',
             capture_output=True,
             text=True,
-            timeout=10  # 10秒超时
+            timeout=10  # 10 second timeout
         )
 
         if 'running' in output:
             return VncRes(state=0, err_msg="", Processes=[])
         else:
-            # 尝试启动服务
+            # Try start service
             VNC.start_vncserver()
             if flag:
                 VNC.check_vncserver_status(False)
             else:
-                return VncRes(state=1, err_msg="服务未启动", Processes=[])
+                return VncRes(state=1, err_msg="Service not started", Processes=[])
 
 
-    # 启动vnc服务
+    # Start VNC service
     @staticmethod
     def start_vncserver():
         """
-        调用系统命令 vncserver -service -start
-        启动 VNC 服务
+        Call system command vncserver -service -start
+        Start VNC service
         """
-        logger.debug("启动vnc服务")
+        logger.debug("Start VNC service")
         vnc_path = VNC.get_vncserver_path()
         if not vnc_path:
-            return VncRes(state=1, err_msg="未找到 vncserver 可执行文件", Processes=[])
+            return VncRes(state=1, err_msg="vncserver executable file not found", Processes=[])
         
         run_as_admin(
             [vnc_path, '-service', '-start', '-noconsole'],
             command_name='vncserver_-service_-start',
             capture_output=True,
             text=True,
-            timeout=10  # 10秒超时
+            timeout=10  # 10 second timeout
         )
 
 
     @staticmethod
     def get_vncserver_path() -> str:
         """
-        获取 vncserver 可执行文件路径
+        Get vncserver executable file path
         """
 
         realvnc_path = cache.get(REALVNC_CACHE_KEY)
         if not realvnc_path:
-            logger.debug("RealVNC 路径未配置，尝试默认路径")
+            logger.debug("RealVNC path not configured, trying default path")
 
             possible_paths = [
                 'C:\\Program Files\\RealVNC\\VNC Server\\vncserver.exe'
@@ -150,17 +150,17 @@ class VNC:
     @staticmethod
     def disconnect():
         """
-        断开所有 vnc 连接
+        Disconnect all VNC connections
         """
-        logger.debug("断开所有 vnc 连接")
+        logger.debug("Disconnect all VNC connections")
         vnc_path = VNC.get_vncserver_path()
         if not vnc_path:
-            return VncRes(state=1, err_msg="未找到 vncserver 可执行文件", Processes=[])
+            return VncRes(state=1, err_msg="vncserver executable file not found", Processes=[])
         
         run_as_admin(
             [vnc_path, '-service', '-disconnect'],
             command_name='vncserver_-service_-disconnect',
             capture_output=True,
             text=True,
-            timeout=10  # 10秒超时
+            timeout=10  # 10 second timeout
         )

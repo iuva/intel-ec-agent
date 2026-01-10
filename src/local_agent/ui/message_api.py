@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-消息框HTTP API服务
-提供消息框功能的HTTP接口，供其他进程调用
-使用本地消息窗口替代exe调用
+Message box HTTP API service
+Provides HTTP interface for message box functionality, called by other processes
+Uses local message window to replace exe calls
 """
 
 import asyncio
@@ -14,64 +14,64 @@ from pydantic import BaseModel
 from local_agent.core.ek import EK
 from typing import Dict, Any
 
-# 导入本地消息窗口组件
+# Import local message window component
 from .message_window import create_message_window, MessageResult
 
 
 class MessageRequest(BaseModel):
-    """消息请求模型"""
+    """Message request model"""
     message: str
-    title: str = "系统提示"
+    title: str = "System Prompt"
     confirm_show: bool = True
     cancel_show: bool = False
-    confirm_text: str = "确定"
-    cancel_text: str = "取消"
+    confirm_text: str = "OK"
+    cancel_text: str = "Cancel"
     timeout: int = 0
 
 
 class MessageResponse(BaseModel):
-    """消息响应模型"""
+    """Message response model"""
     success: bool
     user_choice: Optional[str] = None
     error: Optional[str] = None
 
 
 class MessageAPIService:
-    """消息框API服务类"""
+    """Message box API service class"""
     
     def __init__(self, port: int = 8001):
-        """初始化API服务"""
+        """Initialize API service"""
         self.port = port
         self.logger = logging.getLogger(__name__)
-        self.app = FastAPI(title="消息框API服务", version="1.0.0")
+        self.app = FastAPI(title="Message Box API Service", version="1.0.0")
         
-        # 创建本地消息窗口实例
+        # Create local message window instance
         self.message_window = create_message_window()
         
-        # 注册路由
+        # Register routes
         self._setup_routes()
         
-        self.logger.info(f"消息框API服务初始化完成，端口: {self.port}, 使用本地消息窗口")
+        self.logger.info(f"Message box API service initialized, port: {self.port}, using local message window")
     
     def _setup_routes(self):
-        """设置API路由"""
+        """Set up API routes"""
         
         @self.app.get("/")
         async def root():
-            """根路径接口"""
+            """Root path interface"""
             return {
-                "service": "消息框API服务",
-                "status": "运行中",
+                "service": "Message Box API Service",
+                "status": "Running",
                 "port": self.port,
                 "message_type": "local_window"
             }
         
         @self.app.get("/health")
         async def health_check():
-            """健康检查接口"""
+            """Health check interface"""
             return {
                 "status": "healthy",
-                "service": "消息框API服务",
+                "service": "Message Box API Service",
                 "port": self.port,
                 "message_type": "local_window"
             }
@@ -79,7 +79,7 @@ class MessageAPIService:
         
         @self.app.get("/username")
         async def username():
-            """根路径接口"""
+            """Get username"""
             import os
             user_name = os.environ.get('USERNAME')
             if not user_name:
@@ -90,14 +90,14 @@ class MessageAPIService:
 
         @self.app.post("/show_message", response_model=MessageResponse)
         async def show_message(request: MessageRequest) -> MessageResponse:
-            """显示消息框"""
+            """Show message box"""
             try:
-                self.logger.debug(f"显示消息框: title={request.title}, message={request.message}")
+                self.logger.debug(f"Show message box: title={request.title}, message={request.message}")
                 
-                # 使用本地消息窗口显示消息
+                # Use local message window to show message
                 result = self.message_window.show_message(
                     message=request.message,
-                    title=request.title,
+                    title=request.title,                                                                                                                                                                                                                                                                                                                                                                                                                                                                          
                     confirm_show=request.confirm_show,
                     cancel_show=request.cancel_show,
                     confirm_text=request.confirm_text,
@@ -117,46 +117,46 @@ class MessageAPIService:
                     )
                     
             except Exception as e:
-                self.logger.error(f"消息框调用异常: {e}")
+                self.logger.error(f"Message box call exception: {e}")
                 return MessageResponse(
                     success=False,
-                    error=f"消息框调用异常: {str(e)}"
+                    error=f"Message box call exception: {str(e)}"
                 )
         
         @self.app.post("/show_confirm", response_model=MessageResponse)
-        async def show_confirm(message: str, title: str = "确认操作") -> MessageResponse:
-            """显示确认对话框"""
+        async def show_confirm(message: str, title: str = "Confirm Operation") -> MessageResponse:
+            """Show confirm dialog"""
             request = MessageRequest(
                 message=message,
                 title=title,
                 confirm_show=True,
                 cancel_show=True,
-                confirm_text="确认",
-                cancel_text="取消"
+                confirm_text="Confirm",
+                cancel_text="Cancel"
             )
             return await show_message(request)
         
         @self.app.post("/show_info", response_model=MessageResponse)
-        async def show_info(message: str, title: str = "信息提示") -> MessageResponse:
-            """显示信息对话框"""
+        async def show_info(message: str, title: str = "Information") -> MessageResponse:
+            """Show info dialog"""
             request = MessageRequest(
                 message=message,
                 title=title,
                 confirm_show=True,
                 cancel_show=False,
-                confirm_text="确定"
+                confirm_text="OK"
             )
             return await show_message(request)
         
         @self.app.post("/show_warning", response_model=MessageResponse)
-        async def show_warning(message: str, title: str = "警告") -> MessageResponse:
-            """显示警告对话框"""
+        async def show_warning(message: str, title: str = "Warning") -> MessageResponse:
+            """Show warning dialog"""
             request = MessageRequest(
                 message=message,
                 title=title,
                 confirm_show=True,
                 cancel_show=False,
-                confirm_text="我知道了"
+                confirm_text="OK"
             )
             return await show_message(request)
 
@@ -165,7 +165,7 @@ class MessageAPIService:
         @self.app.post("/test_start", response_model=MessageResponse)
         async def test_start(body: Dict[str, Any]) -> MessageResponse:
             """
-            因为ek 程序有用户界面，所以应该使用服务调用此接口进行启动
+            Because EK program has user interface, this interface should be called using service for startup
             """
             EK.start_test(body['tc_id'], body['cycle_name'], body['user_name'])
             return MessageResponse(
@@ -174,10 +174,10 @@ class MessageAPIService:
             )
     
     async def start_server(self):
-        """启动FastAPI服务器"""
+        """Start FastAPI server"""
         import uvicorn
         
-        self.logger.info(f"启动消息框API服务，端口: {self.port}")
+        self.logger.info(f"Starting message box API service, port: {self.port}")
         
         config = uvicorn.Config(
             app=self.app,
@@ -191,18 +191,18 @@ class MessageAPIService:
 
 
 def create_message_api_service(port: int = 8001) -> MessageAPIService:
-    """创建消息框API服务实例"""
+    """Create message box API service instance"""
     return MessageAPIService(port=port)
 
 
 async def run_message_api_service(port: int = 8001):
-    """运行消息框API服务"""
+    """Run message box API service"""
     service = create_message_api_service(port)
     await service.start_server()
 
 
 if __name__ == "__main__":
-    # 测试代码
+    # Test code
     import logging
     logging.basicConfig(level=logging.INFO)
     

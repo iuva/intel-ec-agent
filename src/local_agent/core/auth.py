@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-鉴权相关实现
+Authentication related implementation
 """
 from ..logger import get_logger
 from ..core.global_cache import cache
@@ -12,13 +12,13 @@ from local_agent.utils.http_client import http_post
 logger = get_logger(__name__)
 
 def auth_token():
-    """获取鉴权token"""
+    """Get [authentication] token"""
     local_info = cache.get(LOCAL_INFO_CACHE_KEY)
     if not local_info:
-        logger.error("本地信息缓存为空，无法获取鉴权token")
+        logger.error("Local info cache is empty, cannot obtain authentication token")
         return False
 
-    # 发起网络请求
+    # [Initiate network] request
     res = http_post(
         url="/auth/device/login",
         data=local_info.to_dict(),
@@ -42,12 +42,12 @@ def auth_token():
 
 
 def refresh_token():
-    """刷新鉴权token"""
+    """[Refresh authentication] token"""
     auth_info = cache.get(AUTH_INFO_CACHE_KEY)
     if not auth_info:
         return False
 
-    # 发起网络请求
+    # [Initiate network] request
     res = http_post(
         url="/auth/refresh",
         data={

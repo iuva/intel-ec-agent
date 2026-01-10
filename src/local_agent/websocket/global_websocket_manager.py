@@ -1,26 +1,26 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-全局WebSocket管理器
-单例模式，支持一行代码启动和停止WebSocket服务
+Global WebSocket manager
+Singleton pattern, supports one-line code to start and stop WebSocket service
 
-使用示例：
-1. 启动WebSocket服务：
+Usage examples:
+1. Start WebSocket service:
    from src.local_agent.websocket.global_websocket_manager import websocket_manager
    await websocket_manager.start()
 
-2. 停止WebSocket服务：
+2. Stop WebSocket service:
    await websocket_manager.stop()
 
-3. 重启WebSocket服务：
+3. Restart WebSocket service:
    await websocket_manager.restart()
 
-4. 发送消息：
+4. Send message:
    await websocket_manager.send_message({"type": "heartbeat"})
 
-5. 检查连接状态：
+5. Check connection status:
    if websocket_manager.is_connected():
-       print("WebSocket已连接")
+       print("WebSocket is connected")
 """
 
 import asyncio
@@ -32,15 +32,15 @@ from .message_handler import register_websocket_handlers
 
 
 class GlobalWebSocketManager:
-    """全局WebSocket管理器（单例模式）"""
+    """Global WebSocket manager (singleton pattern)"""
     
     _instance: Optional['GlobalWebSocketManager'] = None
     _lock = asyncio.Lock()
     
     def __init__(self):
-        """初始化全局WebSocket管理器"""
+        """Initialize global WebSocket manager"""
         if GlobalWebSocketManager._instance is not None:
-            raise RuntimeError("请使用 get_instance() 方法获取单例实例")
+            raise RuntimeError("Please use the get_ince() method to obtain singleton instances")
         
         self.logger = get_logger(__name__)
         self._websocket_manager: Optional[WebSocketManager] = None
@@ -51,7 +51,7 @@ class GlobalWebSocketManager:
     
     @classmethod
     async def get_instance(cls) -> 'GlobalWebSocketManager':
-        """获取全局WebSocket管理器单例实例"""
+        """Get global WebSocket manager singleton instance"""
         async with cls._lock:
             if cls._instance is None:
                 cls._instance = cls()
@@ -59,126 +59,126 @@ class GlobalWebSocketManager:
     
     async def initialize(self, application=None) -> bool:
         """
-        初始化WebSocket管理器
+        Initialize WebSocket manager
         
         Args:
-            application: 应用实例（可选，用于消息处理器注册）
+            application: Application instance (optional, used for message handler registration)
             
         Returns:
-            bool: 初始化是否成功
+            bool: Whether initialization was successful
         """
         if self._initialized:
-            self.logger.info("WebSocket管理器已初始化")
+            self.logger.info("WebSocket manager already initialized")
             return True
             
         try:
-            self.logger.info("正在初始化全局WebSocket管理器...")
+            self.logger.info("Initializing global WebSocket manager...")
             
-            # 创建WebSocket管理器实例
+            # Create WebSocket manager instance
             self._websocket_manager = WebSocketManager()
             self._application = application
             
             self._initialized = True
-            self.logger.info("全局WebSocket管理器初始化成功")
+            self.logger.info("Global WebSocket manager initialization successful")
             return True
             
         except Exception as e:
-            self.logger.error(f"全局WebSocket管理器初始化失败: {e}")
+            self.logger.error(f"Global WebSocket manager initialization failed: {e}")
             return False
     
     async def start(self, application=True) -> bool:
         """
-        启动WebSocket服务
+        Start WebSocket service
         
         Args:
-            application: 应用实例（可选）
+            application: Application instance (optional)
             
         Returns:
-            bool: 启动是否成功
+            bool: Whether startup was successful
         """
         try:
-            # 确保已初始化
+            # Ensure already initialized
             if not self._initialized:
                 if not await self.initialize(application):
                     return False
             
             if not self._websocket_manager:
-                self.logger.error("WebSocket管理器未初始化")
+                self.logger.error("WebSocket manager not initialized")
                 return False
             
-            # 启动WebSocket服务
+            # Start WebSocket service
             return await self._websocket_manager.start(application)
             
         except Exception as e:
-            self.logger.error(f"WebSocket服务启动失败: {e}")
+            self.logger.error(f"WebSocket service startup failed: {e}")
             return False
     
     async def stop(self) -> bool:
         """
-        停止WebSocket服务
+        Stop WebSocket service
         
         Returns:
-            bool: 停止是否成功
+            bool: Whether stop was successful
         """
         try:
             if not self._websocket_manager:
-                self.logger.warning("WebSocket管理器未初始化，无需停止")
+                self.logger.warning("WebSocket manager not initialized, no need to stop")
                 return True
             
-            # 停止WebSocket服务
+            # Stop WebSocket service
             return await self._websocket_manager.stop()
             
         except Exception as e:
-            self.logger.error(f"WebSocket服务停止失败: {e}")
+            self.logger.error(f"WebSocket service stop failed: {e}")
             return False
     
     async def restart(self, application=None) -> bool:
         """
-        重启WebSocket服务
+        Restart WebSocket service
         
         Args:
-            application: 应用实例（可选）
+            application: Application instance (optional)
             
         Returns:
-            bool: 重启是否成功
+            bool: Whether restart was successful
         """
         try:
-            # 先停止再启动
+            # First stop then start
             await self.stop()
-            await asyncio.sleep(1)  # 等待1秒
+            await asyncio.sleep(1)  # Wait 1 second
             return await self.start(application)
             
         except Exception as e:
-            self.logger.error(f"WebSocket服务重启失败: {e}")
+            self.logger.error(f"WebSocket service restart failed: {e}")
             return False
     
     async def send_message(self, message: Dict[str, Any]) -> bool:
         """
-        发送WebSocket消息
+        Send WebSocket message
         
         Args:
-            message: 要发送的消息字典
+            message: Message dictionary to send
             
         Returns:
-            bool: 发送是否成功
+            bool: Whether send was successful
         """
         try:
             if not self._websocket_manager:
-                self.logger.warning("WebSocket管理器未初始化，无法发送消息")
+                self.logger.warning("WebSocket manager not initialized, unable to send message")
                 return False
             
             return await self._websocket_manager.send_message(message)
             
         except Exception as e:
-            self.logger.error(f"发送WebSocket消息失败: {e}")
+            self.logger.error(f"Send WebSocket message failed: {e}")
             return False
     
     def is_connected(self) -> bool:
         """
-        检查WebSocket连接状态
+        Check WebSocket connection status
         
         Returns:
-            bool: 是否已连接
+            bool: Whether connected
         """
         try:
             if not self._websocket_manager:
@@ -187,21 +187,21 @@ class GlobalWebSocketManager:
             return self._websocket_manager.is_connected()
             
         except Exception as e:
-            self.logger.error(f"检查WebSocket连接状态失败: {e}")
+            self.logger.error(f"Check WebSocket connection status failed: {e}")
             return False
     
     def is_supposed(self) -> bool:
-        # 是否应该运行
+        # Whether should run
         if not self._websocket_manager:
             return False
         return self._websocket_manager.is_supposed()
     
     def is_running(self) -> bool:
         """
-        检查WebSocket服务运行状态
+        Check WebSocket service running status
         
         Returns:
-            bool: 是否正在运行
+            bool: Whether running
         """
         try:
             if not self._websocket_manager:
@@ -210,60 +210,60 @@ class GlobalWebSocketManager:
             return self._websocket_manager.is_running()
             
         except Exception as e:
-            self.logger.error(f"检查WebSocket服务运行状态失败: {e}")
+            self.logger.error(f"Check WebSocket service running status failed: {e}")
             return False
     
     def set_on_connect(self, callback: Callable):
         """
-        设置连接成功回调
+        Set connection success callback
         
         Args:
-            callback: 回调函数
+            callback: Callback function
         """
         if self._websocket_manager:
             self._websocket_manager.set_on_connect(callback)
-    
+
     def set_on_disconnect(self, callback: Callable):
         """
-        设置连接断开回调
+        Set connection disconnect callback
         
         Args:
-            callback: 回调函数
+            callback: Callback function
         """
         if self._websocket_manager:
             self._websocket_manager.set_on_disconnect(callback)
-    
+
     def set_on_message(self, callback: Callable):
         """
-        设置消息接收回调
+        Set message receive callback
         
         Args:
-            callback: 回调函数
+            callback: Callback function
         """
         if self._websocket_manager:
             self._websocket_manager.set_on_message(callback)
-    
+
     def set_on_error(self, callback: Callable):
         """
-        设置错误回调
+        Set error callback
         
         Args:
-            callback: 回调函数
+            callback: Callback function
         """
         if self._websocket_manager:
             self._websocket_manager.set_on_error(callback)
 
 
-# 创建全局单例实例
+# Create global singleton instance
 _global_websocket_manager: Optional[GlobalWebSocketManager] = None
 
 
 async def get_websocket_manager() -> GlobalWebSocketManager:
     """
-    获取全局WebSocket管理器实例
+    Get global WebSocket manager instance
     
     Returns:
-        GlobalWebSocketManager: 全局WebSocket管理器实例
+        GlobalWebSocketManager: Global WebSocket manager instance
     """
     global _global_websocket_manager
     
@@ -273,17 +273,17 @@ async def get_websocket_manager() -> GlobalWebSocketManager:
     return _global_websocket_manager
 
 
-# 便捷函数 - 一行代码启动和停止WebSocket服务
+# Convenient functions - one-line code to start and stop WebSocket service
 
 async def start_websocket(application=None) -> bool:
     """
-    一行代码启动WebSocket服务
+    One-line code to start WebSocket service
     
     Args:
-        application: 应用实例（可选）
+        application: Application instance (optional)
         
     Returns:
-        bool: 启动是否成功
+        bool: Whether startup was successful
     """
     manager = await get_websocket_manager()
     return await manager.start(application)
@@ -291,10 +291,10 @@ async def start_websocket(application=None) -> bool:
 
 async def stop_websocket() -> bool:
     """
-    一行代码停止WebSocket服务
+    One-line code to stop WebSocket service
     
     Returns:
-        bool: 停止是否成功
+        bool: Whether stop was successful
     """
     manager = await get_websocket_manager()
     return await manager.stop()
@@ -302,13 +302,13 @@ async def stop_websocket() -> bool:
 
 async def restart_websocket(application=None) -> bool:
     """
-    一行代码重启WebSocket服务
+    One-line code to restart WebSocket service
     
     Args:
-        application: 应用实例（可选）
+        application: Application instance (optional)
         
     Returns:
-        bool: 重启是否成功
+        bool: Whether restart was successful
     """
     manager = await get_websocket_manager()
     return await manager.restart(application)
@@ -316,13 +316,13 @@ async def restart_websocket(application=None) -> bool:
 
 async def send_websocket_message(message: Dict[str, Any]) -> bool:
     """
-    一行代码发送WebSocket消息
+    One-line code to send WebSocket message
     
     Args:
-        message: 要发送的消息字典
+        message: Message dictionary to send
         
     Returns:
-        bool: 发送是否成功
+        bool: Whether send was successful
     """
     manager = await get_websocket_manager()
     return await manager.send_message(message)
@@ -330,10 +330,10 @@ async def send_websocket_message(message: Dict[str, Any]) -> bool:
 
 def is_websocket_connected() -> bool:
     """
-    一行代码检查WebSocket连接状态
+    One-line code to check WebSocket connection status
     
     Returns:
-        bool: 是否已连接
+        bool: Whether connected
     """
     if _global_websocket_manager is None:
         return False
@@ -342,24 +342,24 @@ def is_websocket_connected() -> bool:
 
 def is_websocket_running() -> bool:
     """
-    一行代码检查WebSocket服务运行状态
+    One-line code to check WebSocket service running status
     
     Returns:
-        bool: 是否正在运行
+        bool: Whether running
     """
     if _global_websocket_manager is None:
         return False
     return _global_websocket_manager.is_running()
 
 
-# 全局单例实例（延迟初始化）
+# Global singleton instance (delayed initialization)
 websocket_manager = None
 
 
 def get_websocket_manager_sync() -> Optional[GlobalWebSocketManager]:
-    """同步方式获取全局WebSocket管理器实例
+    """Synchronous way to get global WebSocket manager instance
     
     Returns:
-        Optional[GlobalWebSocketManager]: 全局WebSocket管理器实例，如果未初始化则返回None
+        Optional[GlobalWebSocketManager]: Global WebSocket manager instance, returns None if not initialized
     """
     return _global_websocket_manager

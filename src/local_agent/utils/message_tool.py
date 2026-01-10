@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-消息工具类 - HTTP版本
-通过HTTP API调用消息框服务，实现双进程机制
+Message tool class - HTTP version
+Calls message box service through HTTP API, implements dual-process mechanism
 """
 
 import os
@@ -14,43 +14,43 @@ from typing import Optional, Dict, Any
 
 
 class MessageTool:
-    """消息工具类，通过HTTP API调用消息框服务"""
+    """Message utility class, calls message box service through HTTP API"""
     
     def __init__(self, api_url: str = "http://127.0.0.1:8001"):
-        """初始化消息工具类"""
+        """Initialize message utility class"""
         self.logger = logging.getLogger(__name__)
         self.api_url = api_url
         
-        # 获取当前程序所在目录
+        # Get current program directory
         self.current_dir = Path(sys.executable).parent if hasattr(sys, 'frozen') else Path.cwd()
         
-        # 检测运行环境
+        # Detect running environment
         self.is_development = self._detect_development_environment()
         
-        self.logger.info(f"消息工具初始化完成 - 环境: {'开发' if self.is_development else '生产'}, API地址: {self.api_url}")
+        self.logger.info(f"Message tool initialized - Environment: {'Development' if self.is_development else 'Production'}, API address: {self.api_url}")
         
-        # 检查API服务是否可用
+        # Check if API service is available
         if self._check_api_available():
-            self.logger.info("消息框API服务连接成功")
+            self.logger.info("Message box API service connected successfully")
         else:
-            self.logger.warning("消息框API服务不可用，请确保A进程正在运行")
+            self.logger.warning("Message box API service unavailable, please ensure Process A is running")
     
     def _detect_development_environment(self) -> bool:
         """
-        检测是否为开发环境
+        Detect if it's development environment
         
         Returns:
-            bool: True表示开发环境，False表示生产环境
+            bool: True indicates development environment, False indicates production environment
         """
-        # 方法1: 检查是否以Python脚本运行（非打包exe）
+        # Method 1: Check if running as Python script (not packaged exe)
         if not hasattr(sys, 'frozen'):
             return True
         
-        # 方法2: 检查是否在开发目录结构中
+        # Method 2: Check if in development directory structure
         if 'src' in str(self.current_dir) or 'local_agent' in str(self.current_dir):
             return True
         
-        # 方法3: 检查是否存在开发环境标志文件
+        # Method 3: Check if development environment marker files exist
         dev_files = [
             'requirements.txt',
             'setup.py',
@@ -63,7 +63,7 @@ class MessageTool:
             if (self.current_dir / dev_file).exists():
                 return True
         
-        # 方法4: 检查环境变量
+        # Method 4: Check environment variable
         dev_env = os.environ.get('LOCAL_AGENT_DEV_MODE', '').lower()
         if dev_env in ('true', '1', 'yes', 'development'):
             return True
@@ -71,10 +71,11 @@ class MessageTool:
         return False
     
     def _check_api_available(self) -> bool:
-        """检查API服务是否可用
+        """
+        Check if API service is available
         
         Returns:
-            bool: True表示API服务可用
+            bool: True indicates API service is available
         """
         try:
             response = requests.get(f"{self.api_url}/", timeout=5)
@@ -84,34 +85,35 @@ class MessageTool:
     
     def show_message_box(self, 
                         message: str, 
-                        title: str = "系统提示",
+                        title: str = "System Prompt",
                         confirm_show: bool = True,
                         cancel_show: bool = False,
-                        confirm_text: str = "确定",
-                        cancel_text: str = "取消",
+                        confirm_text: str = "OK",
+                        cancel_text: str = "Cancel",
                         timeout: int = 0) -> Optional[str]:
-        """显示消息框 - 通过HTTP API调用
+        """
+        Show message box - via HTTP API call
         
         Args:
-            message: 消息内容
-            title: 标题
-            confirm_show: 是否显示确认按钮
-            cancel_show: 是否显示取消按钮
-            confirm_text: 确认按钮文本
-            cancel_text: 取消按钮文本
-            timeout: 超时时间（秒），0表示不超时（等待用户反馈）
+            message: Message content
+            title: Title
+            confirm_show: Whether to show confirm button
+            cancel_show: Whether to show cancel button
+            confirm_text: Confirm button text
+            cancel_text: Cancel button text
+            timeout: Timeout in seconds, 0 means no timeout (wait for user feedback)
             
         Returns:
-            Optional[str]: 用户选择的按钮文本，超时或错误时返回None
+            Optional[str]: User-selected button text, returns None on timeout or error
         """
         try:
-            # 检查API服务是否可用
+            # Check if API service is available
             if not self._check_api_available():
-                self.logger.error("消息框API服务不可用，无法显示消息框")
-                self.logger.error("请确保A进程（用户进程）正在运行，提供8001端口的FastAPI服务")
+                self.logger.error("Message box API service unavailable, cannot display message box")
+                self.logger.error("Please ensure Process A is running and providing FastAPI service on port 8001")
                 return None
             
-            # 构建API请求数据 - 强制timeout=0确保无超时
+            # Build API request data - force timeout=0 to ensure no timeout
             data = {
                 "message": message,
                 "title": title,
@@ -119,125 +121,125 @@ class MessageTool:
                 "cancel_show": cancel_show,
                 "confirm_text": confirm_text,
                 "cancel_text": cancel_text,
-                "timeout": 0  # 强制设置为0，确保无超时，完全等待用户反馈
+                "timeout": 0  # Force set to 0 to ensure no timeout, completely wait for user feedback
             }
             
-            self.logger.debug(f"调用消息框API: {self.api_url}/show_message")
-            self.logger.debug(f"消息内容: {message}, 标题: {title}")
+            self.logger.debug(f"Calling message box API: {self.api_url}/show_message")
+            self.logger.debug(f"Message content: {message}, Title: {title}")
             
-            # 调用API - 使用非常长的超时时间模拟同步效果
-            # timeout=0表示无限等待，但requests不支持0，所以使用最大整数
+            # Call API - use very long timeout to simulate synchronous effect
+            # timeout=0 means infinite wait, but requests doesn't support 0, so use maximum integer
             response = requests.post(
                 f"{self.api_url}/show_message",
                 json=data,
-                timeout=None  # 无超时，完全等待用户反馈
+                timeout=None  # No timeout, completely wait for user feedback
             )
             
             if response.status_code == 200:
                 result = response.json()
                 if result.get("success"):
-                    # 成功执行，返回用户选择
+                    # Execute successfully, return user choice
                     user_choice = result.get("user_choice")
-                    self.logger.info(f"用户选择了: {user_choice}")
+                    self.logger.info(f"User selected: {user_choice}")
                     return user_choice
                 else:
-                    # API执行出错
-                    error_msg = result.get("error", "未知错误")
-                    self.logger.error(f"消息框API执行失败: {error_msg}")
+                    # API execution error
+                    error_msg = result.get("error", "Unknown error")
+                    self.logger.error(f"Message box API execution failed: {error_msg}")
                     return None
             else:
-                # HTTP请求失败
-                self.logger.error(f"消息框API请求失败: {response.status_code}")
+                # HTTP request failure
+                self.logger.error(f"Message box API request failed: {response.status_code}")
                 return None
                 
         except requests.Timeout:
-            self.logger.warning("消息框API请求超时")
+            self.logger.warning("Message box API request timeout")
             return None
         except requests.RequestException as e:
-            self.logger.error(f"消息框API请求异常: {e}")
+            self.logger.error(f"Message box API request exception: {e}")
             return None
         except Exception as e:
-            self.logger.error(f"消息框调用异常: {e}")
+            self.logger.error(f"Message box call exception: {e}")
             return None
     
 
     
     def show_confirm_dialog(self, 
                            message: str, 
-                           title: str = "确认操作") -> bool:
+                           title: str = "Confirm Operation") -> bool:
         """
-        显示确认对话框（确认/取消）
+        Show confirmation dialog (Confirm/Cancel)
         
         Args:
-            message: 消息内容
-            title: 标题
+            message: Message content
+            title: Title
             
         Returns:
-            bool: True表示用户确认，False表示用户取消或出错
+            bool: True indicates user confirmed, False indicates user canceled or error
         """
         result = self.show_message_box(
             message=message,
             title=title,
             confirm_show=True,
             cancel_show=True,
-            confirm_text="确认",
-            cancel_text="取消"
+            confirm_text="OK",
+            cancel_text="Cancel"
         )
         
-        return result == "确认"
+        return result == "OK"
     
     def show_info_dialog(self, 
                         message: str, 
-                        title: str = "信息提示") -> bool:
+                        title: str = "Information Prompt") -> bool:
         """
-        显示信息对话框（只有确定按钮）
+        Show information dialog (only OK button)
         
         Args:
-            message: 消息内容
-            title: 标题
+            message: Message content
+            title: Title
             
         Returns:
-            bool: 总是返回True（表示用户已查看）
+            bool: Always returns True (indicates user has viewed)
         """
         result = self.show_message_box(
             message=message,
             title=title,
             confirm_show=True,
             cancel_show=False,
-            confirm_text="确定"
+            confirm_text="OK"
         )
         
         return result is not None
     
     def show_warning_dialog(self, 
                            message: str, 
-                           title: str = "警告") -> bool:
+                           title: str = "Warning") -> bool:
         """
-        显示警告对话框
+        Show warning dialog
         
         Args:
-            message: 消息内容
-            title: 标题
+            message: Message content
+            title: Title
             
         Returns:
-            bool: True表示用户确认，False表示出错
+            bool: True indicates user confirmed, False indicates error
         """
         result = self.show_message_box(
             message=message,
             title=title,
             confirm_show=True,
             cancel_show=False,
-            confirm_text="我知道了"
+            confirm_text="OK"
         )
         
         return result is not None
     
     def get_environment_info(self) -> Dict[str, Any]:
         """
-        获取环境信息
+        Get environment information
         
         Returns:
-            Dict[str, Any]: 包含环境信息的字典
+            Dict[str, Any]: Dictionary containing environment information
         """
         return {
             "is_development": self.is_development,
@@ -249,16 +251,16 @@ class MessageTool:
         }
 
 
-# 全局消息工具实例
+# Global message utility instance
 _message_tool = None
 
 
 def get_message_tool() -> MessageTool:
     """
-    获取全局消息工具实例
+    Get global message tool instance
     
     Returns:
-        MessageTool: 消息工具实例
+        MessageTool: Message tool instance
     """
     global _message_tool
     if _message_tool is None:
@@ -267,24 +269,24 @@ def get_message_tool() -> MessageTool:
 
 
 def show_message_box(msg: str, 
-                    title: str = "系统提示",
+                    title: str = "System Prompt",
                     confirm_show: bool = True,
                     cancel_show: bool = False,
-                    confirm_text: str = "确定",
-                    cancel_text: str = "取消") -> Optional[str]:
+                    confirm_text: str = "OK",
+                    cancel_text: str = "Cancel") -> Optional[str]:
     """
-    显示消息框的便捷函数
+    Convenience function to show message box
     
     Args:
-        msg: 消息内容
-        title: 标题
-        confirm_show: 是否显示确认按钮
-        cancel_show: 是否显示取消按钮
-        confirm_text: 确认按钮文本
-        cancel_text: 取消按钮文本
+        msg: Message content
+        title: Title
+        confirm_show: Whether to show confirm button
+        cancel_show: Whether to show cancel button
+        confirm_text: Confirm button text
+        cancel_text: Cancel button text
         
     Returns:
-        Optional[str]: 用户选择的按钮文本
+        Optional[str]: User-selected button text
     """
     tool = get_message_tool()
     return tool.show_message_box(
@@ -297,69 +299,69 @@ def show_message_box(msg: str,
     )
 
 
-def show_confirm_dialog(msg: str, title: str = "确认操作") -> bool:
+def show_confirm_dialog(msg: str, title: str = "Confirm Operation") -> bool:
     """
-    显示确认对话框的便捷函数
+    Convenience function to show confirmation dialog
     
     Args:
-        message: 消息内容
-        title: 标题
+        msg: Message content
+        title: Title
         
     Returns:
-        bool: True表示用户确认
+        bool: True indicates user confirmed
     """
     tool = get_message_tool()
     return tool.show_confirm_dialog(message=msg, title=title)
 
 
-def show_info_dialog(msg: str, title: str = "信息提示") -> bool:
+def show_info_dialog(msg: str, title: str = "Information Prompt") -> bool:
     """
-    显示信息对话框的便捷函数
+    Convenience function to show information dialog
     
     Args:
-        message: 消息内容
-        title: 标题
+        msg: Message content
+        title: Title
         
     Returns:
-        bool: 总是返回True
+        bool: Always returns True
     """
     tool = get_message_tool()
     return tool.show_info_dialog(message=msg, title=title)
 
 
-def show_warning_dialog(msg: str, title: str = "警告") -> bool:
+def show_warning_dialog(msg: str, title: str = "Warning") -> bool:
     """
-    显示警告对话框的便捷函数
+    Convenience function to show warning dialog
     
-        Args:
-        message: 消息内容
-        title: 标题
+    Args:
+        msg: Message content
+        title: Title
         
     Returns:
-        bool: True表示用户确认
+        bool: True indicates user confirmed
     """
     tool = get_message_tool()
     return tool.show_warning_dialog(message=msg, title=title)
 
 
 if __name__ == "__main__":
-    # 测试代码
+    # Test code
     import logging
     logging.basicConfig(level=logging.INFO)
     
     tool = MessageTool()
     
-    # 显示环境信息
+    # Show environment info
     env_info = tool.get_environment_info()
-    print("环境信息:")
+    print("Environment info:")
     for key, value in env_info.items():
         print(f"  {key}: {value}")
     
-    # 测试消息框
-    print("\n测试信息对话框...")
-    result = tool.show_info_dialog("这是一个测试消息框", "测试标题")
-    print(f"信息对话框结果: {result}")
+    # Test message box
+    print("\nTesting info dialog...")
+    result = tool.show_info_dialog("This is a test message box", "Test Title")
+    print(f"Info dialog result: {result}")
     
-    print("\n测试确认对话框...")
-    result = tool.show_confirm_dialog("您确定要执行此操作吗？", "确认操作")
-    print(f"确认对话框结果: {result}")
+    print("\nTesting confirm dialog...")
+    result = tool.show_confirm_dialog("Are you sure you want to perform this operation?", "Confirm Operation")
+    print(f"Confirm dialog result: {result}")

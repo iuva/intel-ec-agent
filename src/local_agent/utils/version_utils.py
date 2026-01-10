@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-版本管理工具类
-提供版本号提取、比较和获取功能，支持打包为exe后的版本管理
+Version management utility class
+Provides version number extraction, comparison and retrieval functions, supports version management after packaging as exe
 """
 
 import os
@@ -10,7 +10,7 @@ import sys
 import re
 import time
 from pathlib import Path
-from typing import Optional, Tuple, List
+from typing import Optional, Tuple
 from ..logger import get_logger
 
 logger = get_logger(__name__)
@@ -18,46 +18,46 @@ logger = get_logger(__name__)
 
 
 class VersionUtils:
-    """版本号工具类"""
+    """Version number utility class"""
     
-    # 版本号正则表达式模式
+    # Version number regular expression patterns
     VERSION_PATTERNS = [
-        # 格式1: "ExecutionKit 0.0.1" 或 "DMR Configuration Schema Tool v0.1.0"
+        # Format 1: "ExecutionKit 0.0.1" or "DMR Configuration Schema Tool v0.1.0"
         r'(?:v|V)?(\d+)\.(\d+)\.(\d+)',
-        # 格式2: "V0.0.4"
+        # Format 2: "V0.0.4"
         r'(?:v|V)?(\d+)\.(\d+)',
-        # 格式3: 纯数字版本 "1.0" 或 "1.0.0"
+        # Format 3: Pure number version "1.0" or "1.0.0"
         r'(\d+)(?:\.(\d+))?(?:\.(\d+))?',
-        # 格式4: 带前缀的版本 "version 1.2.3"
+        # Format 4: Version with prefix "version 1.2.3"
         r'(?:version|Version|v|V)\s*(\d+)\.(\d+)\.(\d+)',
     ]
     
     @staticmethod
     def extract_version(version_string: str) -> Optional[Tuple[int, int, int]]:
         """
-        从字符串中提取版本号
+        Extract version number from string
         
         Args:
-            version_string: 包含版本号的字符串
+            version_string: String containing version number
             
         Returns:
-            Optional[Tuple[int, int, int]]: 版本号元组 (主版本, 次版本, 修订版本)，如果提取失败返回None
+            Optional[Tuple[int, int, int]]: Version number tuple (major, minor, patch), returns None if extraction fails
         """
         if not version_string or not isinstance(version_string, str):
             return None
         
-        # 清理字符串，移除多余空格
+        # Clean string, remove extra spaces
         cleaned_string = version_string.strip()
         
-        # 尝试各种版本号模式
+        # Try various version number patterns
         for pattern in VersionUtils.VERSION_PATTERNS:
             match = re.search(pattern, cleaned_string)
             if match:
                 groups = match.groups()
                 
-                # 根据匹配到的组数处理不同格式
+                # Process different formats based on matched group count
                 if len(groups) >= 3 and groups[2] is not None:
-                    # 格式: x.y.z
+                    # Format: x.y.z
                     try:
                         major = int(groups[0])
                         minor = int(groups[1])
@@ -67,21 +67,21 @@ class VersionUtils:
                         continue
                 
                 elif len(groups) >= 2 and groups[1] is not None:
-                    # 格式: x.y
+                    # Format: x.y
                     try:
                         major = int(groups[0])
                         minor = int(groups[1])
-                        patch = 0  # 默认修订版本为0
+                        patch = 0  # Default patch version to 0
                         return major, minor, patch
                     except (ValueError, TypeError):
                         continue
                 
                 elif len(groups) >= 1 and groups[0] is not None:
-                    # 格式: x
+                    # Format: x
                     try:
                         major = int(groups[0])
-                        minor = 0  # 默认次版本为0
-                        patch = 0  # 默认修订版本为0
+                        minor = 0  # Default minor version to 0
+                        patch = 0  # Default patch version to 0
                         return major, minor, patch
                     except (ValueError, TypeError):
                         continue
@@ -91,100 +91,100 @@ class VersionUtils:
     @staticmethod
     def is_newer_version(new_version_str: str, old_version_str: str) -> bool:
         """
-        比较两个版本号，判断new_version_str是否比old_version_str更新
+        Compare two version numbers to determine if new_version_str is newer than old_version_str
         
         Args:
-            new_version_str: 新版本字符串
-            old_version_str: 旧版本字符串
+            new_version_str: New version string
+            old_version_str: Old version string
             
         Returns:
-            bool: True表示new_version_str更新，False表示不是更新版本或比较失败
+            bool: True means new_version_str is newer, False means not newer version or comparison failed
         """
-        logger.info(f"比较版本号: {new_version_str} vs {old_version_str}")
+        logger.info(f"Comparing versions: {new_version_str} vs {old_version_str}")
         
-        # 提取版本号
+        # Extract version numbers
         new_version = VersionUtils.extract_version(new_version_str)
         old_version = VersionUtils.extract_version(old_version_str)
         
-        # 记录提取到的版本号
-        logger.info(f"提取到的版本号: new={new_version}, old={old_version}")
+        # Record extracted version numbers
+        logger.info(f"Extracted versions: new={new_version}, old={old_version}")
         
-        # 没有新版本，返回False
+        # No new version, return False
         if new_version is None:
             return False
         
-        # 没有旧版本，返回True
+        # No old version, return True
         if old_version is None:
             return True
         
-        # 比较主版本号
+        # Compare major version numbers
         if new_version[0] > old_version[0]:
             return True
         elif new_version[0] < old_version[0]:
             return False
         
-        # 主版本相同，比较次版本号
+        # Major version same, compare minor version numbers
         if new_version[1] > old_version[1]:
             return True
         elif new_version[1] < old_version[1]:
             return False
         
-        # 主次版本相同，比较修订版本号
+        # Major and minor versions same, compare patch version numbers
         if new_version[2] > old_version[2]:
             return True
         
-        # 所有版本号都相同，不是更新版本
+        # All version numbers same, not an update version
         return False
     
     @staticmethod
     def compare_versions(version1_str: str, version2_str: str) -> int:
         """
-        比较两个版本号
+        Compare two version numbers
         
         Args:
-            version1_str: 第一个版本字符串
-            version2_str: 第二个版本字符串
+            version1_str: First version string
+            version2_str: Second version string
             
         Returns:
-            int: 1表示version1 > version2, -1表示version1 < version2, 0表示相等
+            int: 1 means version1 > version2, -1 means version1 < version2, 0 means equal
         """
         version1 = VersionUtils.extract_version(version1_str)
         version2 = VersionUtils.extract_version(version2_str)
         
         if version1 is None or version2 is None:
-            return 0  # 无法比较时返回相等
+            return 0  # Return equal when unable to compare
         
-        # 比较主版本号
+        # Compare major version numbers
         if version1[0] > version2[0]:
             return 1
         elif version1[0] < version2[0]:
             return -1
         
-        # 主版本相同，比较次版本号
+        # Major version same, compare minor version numbers
         if version1[1] > version2[1]:
             return 1
         elif version1[1] < version2[1]:
             return -1
         
-        # 主次版本相同，比较修订版本号
+        # Major and minor versions same, compare patch version numbers
         if version1[2] > version2[2]:
             return 1
         elif version1[2] < version2[2]:
             return -1
         
-        # 所有版本号都相同
+        # All version numbers same
         return 0
     
     @staticmethod
     def format_version(version_tuple: Tuple[int, int, int]) -> str:
         """
-        格式化版本号元组为字符串
+        Format version number tuple to string
         
         Args:
-            version_tuple: 版本号元组 (主版本, 次版本, 修订版本)
+            version_tuple: Version number tuple (major, minor, patch)
             
         Returns:
-            str: 格式化后的版本字符串
+            str: Formatted version string
         """
         if len(version_tuple) >= 3:
             return f"{version_tuple[0]}.{version_tuple[1]}.{version_tuple[2]}"
@@ -194,150 +194,150 @@ class VersionUtils:
             return str(version_tuple[0])
 
 
-# 便捷函数
+# Convenient functions
 def extract_version(version_string: str) -> Optional[Tuple[int, int, int]]:
-    """从字符串中提取版本号"""
+    """Extract version number from string"""
     return VersionUtils.extract_version(version_string)
 
 
 def is_newer_version(new_version_str: str, old_version_str: str) -> bool:
-    """比较两个版本号，判断new_version_str是否比old_version_str更新"""
+    """Compare two version numbers to determine if new_version_str is newer than old_version_str"""
     return VersionUtils.is_newer_version(new_version_str, old_version_str)
 
 
 def compare_versions(version1_str: str, version2_str: str) -> int:
-    """比较两个版本号"""
+    """Compare two version numbers"""
     return VersionUtils.compare_versions(version1_str, version2_str)
 
 
 def format_version(version_tuple: Tuple[int, int, int]) -> str:
-    """格式化版本号元组为字符串"""
+    """Format version number tuple to string"""
     return VersionUtils.format_version(version_tuple)
 
 
 class AppVersionManager:
-    """应用程序版本管理器 - 优化版本管理策略"""
+    """Application version manager - optimized version management strategy"""
     
     def __init__(self):
         self._cached_version = None
-        self._version_source = None  # 记录版本来源
-        self._version_timestamp = None  # 记录版本获取时间
-        self._exe_file_hash = None  # 记录exe文件哈希，用于检测文件变化
+        self._version_source = None  # Record version source
+        self._version_timestamp = None  # Record version retrieval time
+        self._exe_file_hash = None  # Record exe file hash for detecting file changes
     
     def get_app_version(self, is_cache: bool = True) -> str:
         """
-        获取应用程序版本 - 修复版本读取策略（解决更新后版本号未更新问题）
+        Get application version - fixed version reading strategy (solves issue of version number not updating after update)
         
-        修复后的优先级策略（确保更新后能读取新版本）：
-        1. 文件系统VERSION文件（exe同级目录，更新后版本）
-        2. 运行时环境版本（打包后exe的版本信息）
-        3. 打包资源中的VERSION文件（打包时的旧版本）
-        4. 默认版本
+        Fixed priority strategy (ensures new version can be read after update):
+        1. File system VERSION file (exe same directory, updated version)
+        2. Runtime environment version (packaged exe version information)
+        3. VERSION file in packaged resources (old version from packaging time)
+        4. Default version
         
         Returns:
-            str: 版本号字符串
+            str: Version number string
         """
-        # 检查是否需要清除缓存（检测文件变化）
+        # Check if cache needs to be cleared (detect file changes)
         if is_cache and self._cached_version and self._should_clear_cache():
-            logger.info("[版本管理] 检测到文件变化，清除缓存")
+            logger.info("[Version Management] Detected file changes, clearing cache")
             self._cached_version = None
             self._version_source = None
             self._version_timestamp = None
             self._exe_file_hash = None
         
-        # 如果已有缓存版本，直接返回
+        # If cached version exists, return directly
         if is_cache and self._cached_version:
             return self._cached_version
         
-        # 记录版本获取开始时间
+        # Record version retrieval start time
         start_time = time.time()
         
-        # 修复后的版本获取优先级策略（文件系统优先）
+        # Fixed version retrieval priority strategy (file system first)
         version_sources = [
-            ("文件系统（exe同级目录）", self._get_version_from_filesystem),
-            ("运行时环境", self._get_version_from_runtime),
-            ("打包资源", self._get_version_from_package_resource),
-            ("默认版本", lambda: "1.0.0")
+            ("File system (exe same directory)", self._get_version_from_filesystem),
+            ("Runtime environment", self._get_version_from_runtime),
+            ("Packaged resources", self._get_version_from_package_resource),
+            ("Default version", lambda: "1.0.0")
         ]
         
         version = None
-        source_name = "未知"
+        source_name = "Unknown"
         
         for source_name, get_method in version_sources:
             try:
                 version = get_method()
                 if version and self._validate_version_format(version):
-                    # 记录版本来源和时间戳
+                    # Record version source and timestamp
                     self._version_source = source_name
                     self._version_timestamp = time.time()
                     
-                    # 缓存版本
+                    # Cache version
                     self._cached_version = version
                     
-                    # 记录获取耗时
+                    # Record retrieval time
                     elapsed_time = time.time() - start_time
                     
-                    logger.info(f"[版本管理] 从{source_name}获取版本成功: {version} (耗时: {elapsed_time:.3f}s)")
+                    logger.info(f"[Version Management] Successfully obtained version from {source_name}: {version} (time: {elapsed_time:.3f}s)")
                     return version
                     
             except Exception as e:
-                logger.debug(f"[版本管理] 从{source_name}获取版本失败: {str(e)}")
+                logger.debug(f"[Version Management] Failed to obtain version from {source_name}: {str(e)}")
         
-        # 如果所有方法都失败，使用默认版本
+        # If all methods fail, use default version
         if not version:
             version = "1.0.0"
-            source_name = "默认版本"
+            source_name = "Default version"
             self._version_source = source_name
             self._version_timestamp = time.time()
             self._cached_version = version
             
             elapsed_time = time.time() - start_time
-            logger.warning(f"[版本管理] 使用{source_name}: {version} (耗时: {elapsed_time:.3f}s)")
+            logger.warning(f"[Version Management] Using {source_name}: {version} (time: {elapsed_time:.3f}s)")
         
         return version
     
     def _get_version_from_runtime(self) -> Optional[str]:
         """
-        从运行时环境获取版本信息（最优方案）
+        Get version information from runtime environment (optimal solution)
         
-        策略：
-        1. 检查exe文件属性中的版本信息
-        2. 检查exe同级目录的VERSION文件（更新后版本）
-        3. 检查exe内部嵌入的版本信息
+        Strategy:
+        1. Check version information in exe file properties
+        2. Check VERSION file in exe same directory (updated version)
+        3. Check version information embedded in exe
         
         Returns:
-            Optional[str]: 版本号字符串
+            Optional[str]: Version number string
         """
         try:
             is_frozen = getattr(sys, 'frozen', False)
             
             if is_frozen:
-                # 打包环境：最优策略
+                # Packaged environment: optimal strategy
                 
-                # 方法1: 检查exe文件属性版本信息
+                # Method 1: Check exe file attribute version information
                 version = self._get_version_from_exe_properties()
                 if version:
-                    logger.debug("[版本管理] 从exe文件属性获取版本成功")
+                    logger.debug("[Version Management] Successfully obtained version from exe properties")
                     return version
                 
-                # 方法2: 检查exe同级目录的VERSION文件（更新后版本）
+                # Method 2: Check VERSION file in exe same directory (updated version)
                 exe_dir = Path(sys.executable).parent
                 version_file = exe_dir / "VERSION"
                 if version_file.exists():
                     with open(version_file, 'r', encoding='utf-8') as f:
                         version = f.read().strip()
                         if self._validate_version_format(version):
-                            logger.debug("[版本管理] 从exe同级目录VERSION文件获取版本成功")
+                            logger.debug("[Version Management] Successfully obtained version from exe directory VERSION file")
                             return version
                 
-                # 方法3: 检查exe内部嵌入的版本信息
+                # Method 3: Check version information embedded in exe
                 version = self._get_version_from_exe_embedded()
                 if version:
-                    logger.debug("[版本管理] 从exe内部嵌入版本获取成功")
+                    logger.debug("[Version Management] Successfully obtained version from exe embedded data")
                     return version
             
             else:
-                # 开发环境：直接读取项目根目录VERSION文件
+                # Development environment: directly read project root directory VERSION file
                 project_root = self._get_project_root()
                 if project_root:
                     version_file = project_root / "VERSION"
@@ -345,42 +345,42 @@ class AppVersionManager:
                         with open(version_file, 'r', encoding='utf-8') as f:
                             version = f.read().strip()
                             if self._validate_version_format(version):
-                                logger.debug("[版本管理] 开发环境从项目VERSION文件获取版本成功")
+                                logger.debug("[Version Management] Successfully obtained version from project VERSION file in development environment")
                                 return version
             
         except Exception as e:
-            logger.debug(f"[版本管理] 从运行时环境获取版本失败: {str(e)}")
+            logger.debug(f"[Version Management] Failed to obtain version from runtime environment: {str(e)}")
         
         return None
     
     def _get_version_from_filesystem(self) -> Optional[str]:
         """
-        从文件系统获取版本信息（最高优先级 - 修复更新后版本读取问题）
+        Get version information from file system (highest priority - fixes issue of reading version after update)
         
-        修复后的策略（确保更新后能读取新版本）：
-        1. 优先检查exe同级目录的VERSION文件（更新后版本）
-        2. 检查exe所在目录的上级目录的VERSION文件（开发环境）
-        3. 检查临时解压目录的VERSION文件（打包资源）
+        Fixed strategy (ensures new version can be read after update):
+        1. Priority check VERSION file in exe same directory (updated version)
+        2. Check VERSION file in parent directory of exe location directory (development environment)
+        3. Check VERSION file in temporary extraction directory (packaged resources)
         
         Returns:
-            Optional[str]: 版本号字符串
+            Optional[str]: Version number string
         """
         try:
             is_frozen = getattr(sys, 'frozen', False)
             
-            # 方法1: 优先检查exe同级目录的VERSION文件（更新后版本）
-            # 这是最关键的一步，确保更新后的程序能读取新版本
+            # Method 1: Priority check VERSION file in exe same directory (updated version)
+            # This is the most critical step to ensure updated program can read new version
             exe_dir = Path(sys.executable).parent
             version_file = exe_dir / "VERSION"
             if version_file.exists():
                 with open(version_file, 'r', encoding='utf-8') as f:
                     version = f.read().strip()
                     if self._validate_version_format(version):
-                        logger.debug(f"[版本管理] 从exe同级目录VERSION文件获取版本成功: {version}")
+                        logger.debug(f"[Version Management] Successfully obtained version from exe directory VERSION file: {version}")
                         return version
             
-            # 方法2: 检查exe所在目录的上级目录的VERSION文件（开发环境）
-            # 对于开发环境，检查项目根目录
+            # Method 2: Check VERSION file in parent directory of exe location directory (development environment)
+            # For development environment, check project root directory
             if not is_frozen:
                 project_root = self._get_project_root()
                 if project_root:
@@ -389,11 +389,11 @@ class AppVersionManager:
                         with open(version_file, 'r', encoding='utf-8') as f:
                             version = f.read().strip()
                             if self._validate_version_format(version):
-                                logger.debug("[版本管理] 从项目根目录VERSION文件获取版本成功")
+                                logger.debug("[Version Management] Successfully obtained version from project root VERSION file")
                                 return version
             
-            # 方法3: 检查临时解压目录的VERSION文件（打包资源）
-            # 这是最低优先级，因为这是打包时的旧版本
+            # Method 3: Check VERSION file in temporary extraction directory (packaged resources)
+            # This is the lowest priority because it's the old version from packaging time
             if is_frozen and hasattr(sys, '_MEIPASS'):
                 temp_dir = Path(sys._MEIPASS)
                 version_file = temp_dir / "VERSION"
@@ -401,24 +401,24 @@ class AppVersionManager:
                     with open(version_file, 'r', encoding='utf-8') as f:
                         version = f.read().strip()
                         if self._validate_version_format(version):
-                            logger.debug("[版本管理] 从临时解压目录VERSION文件获取版本成功")
+                            logger.debug("[Version Management] Successfully obtained version from temporary extraction directory VERSION file")
                             return version
             
         except Exception as e:
-            logger.debug(f"[版本管理] 从文件系统获取版本失败: {str(e)}")
+            logger.debug(f"[Version Management] Failed to obtain version from filesystem: {str(e)}")
         
         return None
     
     def _get_version_from_exe_properties(self) -> Optional[str]:
         """
-        从exe文件属性中获取版本信息
+        Get version information from exe file properties
         
-        策略：
-        1. 使用win32api获取文件版本信息（Windows系统）
-        2. 解析exe文件的版本资源
+        Strategy:
+        1. Use win32api to get file version information (Windows system)
+        2. Parse exe file version resources
         
         Returns:
-            Optional[str]: 版本号字符串
+            Optional[str]: Version number string
         """
         try:
             if sys.platform == "win32":
@@ -427,15 +427,15 @@ class AppVersionManager:
                 
                 exe_path = sys.executable
                 
-                # 获取文件版本信息
+                # Get file version information
                 info = win32api.GetFileVersionInfo(exe_path, "\\")
                 
-                # 提取版本号
+                # Extract version number
                 ms = info.get('FileVersionMS', 0)
                 ls = info.get('FileVersionLS', 0)
                 
                 if ms > 0 or ls > 0:
-                    # 将版本号转换为字符串格式
+                    # Convert version number to string format
                     version_major = (ms >> 16) & 0xFFFF
                     version_minor = ms & 0xFFFF
                     version_build = (ls >> 16) & 0xFFFF
@@ -443,65 +443,65 @@ class AppVersionManager:
                     
                     version = f"V{version_major}.{version_minor}.{version_build}"
                     if self._validate_version_format(version):
-                        logger.debug("[版本管理] 从exe文件属性获取版本成功")
+                        logger.debug("[Version Management] Successfully obtained version from exe properties")
                         return version
             
         except ImportError:
-            logger.debug("[版本管理] win32api模块不可用，跳过exe属性版本获取")
+            logger.debug("[Version Management] win32api module not available, skipping exe property version retrieval")
         except Exception as e:
-            logger.debug(f"[版本管理] 从exe文件属性获取版本失败: {str(e)}")
+            logger.debug(f"[Version Management] Failed to obtain version from exe properties: {str(e)}")
         
         return None
     
     def _get_version_from_exe_embedded(self) -> Optional[str]:
         """
-        从exe内部嵌入的版本信息获取版本
+        Get version from version information embedded in exe
         
-        策略：
-        1. 检查exe内部是否包含版本元数据
-        2. 解析exe的版本资源字符串
+        Strategy:
+        1. Check if exe contains version metadata
+        2. Parse exe version resource strings
         
         Returns:
-            Optional[str]: 版本号字符串
+            Optional[str]: Version number string
         """
         try:
-            # 方法1: 检查exe的版本资源字符串
+            # Method 1: Check exe version resource strings
             if sys.platform == "win32":
                 import win32api
                 
                 exe_path = sys.executable
                 
-                # 获取文件版本信息字符串
+                # Get file version information strings
                 version_info = win32api.GetFileVersionInfo(exe_path, "\\StringFileInfo\\")
                 
                 if version_info:
-                    # 尝试从字符串表获取版本信息
+                    # Try to get version information from string table
                     for lang_charset in version_info:
                         string_table = version_info[lang_charset]
                         if 'ProductVersion' in string_table:
                             version = string_table['ProductVersion']
                             if self._validate_version_format(version):
-                                logger.debug("[版本管理] 从exe内部版本资源获取版本成功")
+                                logger.debug("[Version Management] Successfully obtained version from exe internal version resources")
                                 return version
                         elif 'FileVersion' in string_table:
                             version = string_table['FileVersion']
                             if self._validate_version_format(version):
-                                logger.debug("[版本管理] 从exe内部文件版本获取版本成功")
+                                logger.debug("[Version Management] Successfully obtained version from exe internal file version")
                                 return version
             
         except ImportError:
-            logger.debug("[版本管理] win32api模块不可用，跳过exe内部版本获取")
+            logger.debug("[Version Management] win32api module not available, skipping exe internal version retrieval")
         except Exception as e:
-            logger.debug(f"[版本管理] 从exe内部嵌入版本获取失败: {str(e)}")
+            logger.debug(f"[Version Management] Failed to obtain version from exe embedded data: {str(e)}")
         
         return None
     
     def _get_version_from_package_resource(self) -> Optional[str]:
-        """从打包资源中获取版本信息"""
+        """Get version information from packaged resources"""
         try:
-            # 检查是否打包为exe
+            # Check if packaged as exe
             if getattr(sys, 'frozen', False):
-                # 打包环境：尝试从临时解压目录读取VERSION文件
+                # Packaged environment: Try to read VERSION file from temporary extraction directory
                 if hasattr(sys, '_MEIPASS'):
                     temp_dir = Path(sys._MEIPASS)
                     version_file = temp_dir / "VERSION"
@@ -509,71 +509,71 @@ class AppVersionManager:
                         with open(version_file, 'r', encoding='utf-8') as f:
                             version = f.read().strip()
                             if self._validate_version_format(version):
-                                logger.debug("[版本管理] 从打包资源中读取VERSION文件成功")
+                                logger.debug("[Version Management] Successfully read VERSION file from package resources")
                                 return version
         except Exception as e:
-            logger.debug(f"[版本管理] 从打包资源获取版本失败: {str(e)}")
+            logger.debug(f"[Version Management] Failed to obtain version from package resources: {str(e)}")
         
         return None
     
     def _should_clear_cache(self) -> bool:
         """
-        检查是否需要清除缓存（检测exe文件是否发生变化）
+        Check if cache needs to be cleared (detect if exe file has changed)
         
         Returns:
-            bool: True表示需要清除缓存，False表示不需要
+            bool: True means cache needs to be cleared, False means no need
         """
         try:
-            # 只在打包环境中检查文件变化
+            # Only check file changes in packaged environment
             if not getattr(sys, 'frozen', False):
                 return False
             
-            # 获取当前exe文件路径
+            # Get current exe file path
             exe_path = Path(sys.executable)
             if not exe_path.exists():
                 return False
             
-            # 计算当前exe文件的哈希值
+            # Calculate current exe file hash
             current_hash = self._get_exe_file_hash(exe_path)
             
-            # 如果是第一次获取，记录哈希值
+            # If it's the first retrieval, record hash value
             if self._exe_file_hash is None:
                 self._exe_file_hash = current_hash
                 return False
             
-            # 比较哈希值，如果不同则文件已更新
+            # Compare hash values, if different then file has been updated
             if current_hash != self._exe_file_hash:
-                logger.info(f"[版本管理] 检测到exe文件变化，旧哈希: {self._exe_file_hash}, 新哈希: {current_hash}")
+                logger.info(f"[Version Management] Detected exe file changes, old hash: {self._exe_file_hash}, new hash: {current_hash}")
                 return True
             
             return False
             
         except Exception as e:
-            logger.debug(f"[版本管理] 检查缓存清除条件失败: {str(e)}")
+            logger.debug(f"[Version Management] Failed to check cache clearing conditions: {str(e)}")
             return False
     
     def _get_exe_file_hash(self, file_path: Path) -> str:
         """
-        计算exe文件的哈希值（使用文件大小和修改时间作为简单哈希）
+        Calculate exe file hash (use file size and modification time as simple hash)
         
         Args:
-            file_path: 文件路径
+            file_path: File path
             
         Returns:
-            str: 文件哈希值
+            str: File hash value
         """
         try:
             stat = file_path.stat()
-            # 使用文件大小和修改时间作为哈希值
+            # Use file size and modification time as hash value
             return f"{stat.st_size}_{stat.st_mtime}"
         except Exception as e:
-            logger.debug(f"[版本管理] 计算文件哈希失败: {str(e)}")
+            logger.debug(f"[Version Management] Failed to calculate file hash: {str(e)}")
             return "unknown"
     
     def _get_version_from_setup(self) -> Optional[str]:
-        """从setup.py获取版本信息"""
+        """Get version information from setup.py"""
         try:
-            # 获取项目根目录
+            # Get project root directory
             project_root = self._get_project_root()
             if not project_root:
                 return None
@@ -582,7 +582,7 @@ class AppVersionManager:
             if setup_file.exists():
                 with open(setup_file, 'r', encoding='utf-8') as f:
                     content = f.read()
-                    # 简单的正则匹配版本号
+                    # Simple regex matching version number
                     match = re.search(r"version\s*=\s*['\"]([^'\"]+)['\"]", content)
                     if match:
                         version = match.group(1)
@@ -590,65 +590,65 @@ class AppVersionManager:
                             return version
             
         except Exception as e:
-            logger.warning(f"从setup.py获取版本失败: {str(e)}")
+            logger.warning(f"Failed to obtain version from setup.py: {str(e)}")
         
         return None
     
     def _get_project_root(self) -> Optional[Path]:
-        """获取项目根目录"""
+        """Get project root directory"""
         try:
-            # 检查是否打包为exe
+            # Check if packaged as exe
             is_frozen = getattr(sys, 'frozen', False)
             
             if is_frozen:
-                # 打包为exe时，返回可执行文件所在目录
+                # When packaged as exe, return executable file directory
                 return Path(sys.executable).parent
             else:
-                # 开发环境，返回当前文件所在目录的父目录的父目录的父目录
-                # 因为当前文件路径是: f:\testPc\dragTest\src\local_agent\utils\version_utils.py
-                # 需要返回到: f:\testPc\dragTest
+                # Development environment, return parent directory of current file directory
+                # Because current file path is: f:\testPc\dragTest\src\local_agent\utils\version_utils.py
+                # Need to return to: f:\testPc\dragTest
                 current_file = Path(__file__).resolve()
                 return current_file.parent.parent.parent.parent
                 
         except Exception as e:
-            logger.warning(f"获取项目根目录失败: {str(e)}")
+            logger.warning(f"Failed to obtain project root directory: {str(e)}")
             return None
     
     def _validate_version_format(self, version: str) -> bool:
-        """验证版本号格式"""
+        """Validate version number format"""
         if not version or not isinstance(version, str):
             return False
         
-        # 简单的版本号格式验证（x.y.z 或 x.y）
+        # Simple version number format validation (x.y.z or x.y)
         pattern = r'^\d+(\.\d+)*$'
         return bool(re.match(pattern, version.strip()))
     
     def get_version_info(self) -> dict:
-        """获取详细的版本信息"""
+        """Get detailed version information"""
         version = self.get_app_version()
         
-        # 获取打包信息
+        # Get packaging information
         is_frozen = getattr(sys, 'frozen', False)
-        build_type = "打包版本" if is_frozen else "开发版本"
+        build_type = "Packaged version" if is_frozen else "Development version"
         
         return {
             "version": version,
             "build_type": build_type,
             "python_version": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
             "platform": sys.platform,
-            "executable_path": sys.executable if is_frozen else "开发环境"
+            "executable_path": sys.executable if is_frozen else "Development environment"
         }
 
 
-# 创建全局实例
+# Create global instance
 _app_version_manager = AppVersionManager()
 
 
 def get_app_version(is_cache: bool = True) -> str:
-    """获取应用程序版本"""
+    """Get application version"""
     return _app_version_manager.get_app_version(is_cache)
 
 
 def get_version_info() -> dict:
-    """获取详细的版本信息"""
+    """Get detailed version information"""
     return _app_version_manager.get_version_info()

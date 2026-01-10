@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-WHL包覆盖更新工具
-根据whl包URL进行软件覆盖更新，支持断点续传和错误重试
+WHL package overlay update tool
+Performs software overlay updates based on whl package URL, supports resumable downloads and error retry
 
-主要功能：
-1. 下载whl包文件
-2. 使用pip进行覆盖安装
-3. 支持回滚机制
-4. 完整的日志记录
+Main features:
+1. Download whl package file
+2. Use pip for overlay installation
+3. Support rollback mechanism
+4. Complete logging
 
-使用示例：
+Usage example:
     from local_agent.utils.whl_updater import update_from_whl
     success = update_from_whl("https://example.com/package-1.0.0-py3-none-any.whl")
 """
@@ -24,180 +24,180 @@ import re
 from pathlib import Path
 from typing import Optional, Tuple
 
-# 导入项目全局组件
+# [Import] project global components
 from ..logger import get_logger
-# 导入增强的子进程工具
-from .subprocess_utils import run_with_logging, run_with_logging_safe
-# 延迟导入以避免循环依赖
+# [Import enhanced subprocess utility]
+from .subprocess_utils import run_with_logging
+# Delay[Import to avoid loop dependency]
 def _get_download_file():
     from .file_downloader import download_file_async
     return download_file_async
 
-download_file = None  # 延迟初始化
+download_file = None  # DelayInitialize
 from .python_utils import PythonUtils
 from .path_utils import PathUtils
 
 
 class WhlUpdater:
-    """WHL包覆盖更新工具类"""
+    """WHL package overlay update utility class"""
     
     def __init__(self):
-        """初始化更新器"""
+        """Initialize updater"""
         self.logger = get_logger(__name__)
         self.temp_dir = PathUtils.get_root_path() / "whl_updates"
         self.temp_dir.mkdir(parents=True, exist_ok=True)
         
-        # 配置参数
+        # Configuration parameter
         self.max_retries = 3
-        self.timeout = 1200  # 20分钟超时
+        self.timeout = 1200  # 20 minute timeout
         self.backup_enabled = True
         
-        self.logger.info(f"WHL更新器初始化完成，临时目录: {self.temp_dir}")
+        self.logger.info(f"WHL updater initialized, temporary directory: {self.temp_dir}")
     
     def _get_python_executable(self) -> Optional[str]:
         """
-        获取Python可执行文件路径，使用Python工具类
+        Get Python executable path using Python utility class
         
         Returns:
-            Optional[str]: Python可执行文件路径，如果未找到返回None
+            Optional[str]: Python executable file path, returns None if not found
         """
         try:
             python_path = PythonUtils.get_python_check()
             if python_path:
-                self.logger.info(f"获取Python路径: {python_path}")
+                self.logger.info(f"Python path obtained: {python_path}")
                 return python_path
             else:
-                self.logger.warning("未找到可用的Python路径")
+                self.logger.warning("No available Python path found")
                 return None
         except Exception as e:
-            self.logger.error(f"获取Python路径失败: {e}")
+            self.logger.error(f"Failed to get Python path: {e}")
             return None
     
     async def _download_whl_file(self, whl_url: str) -> Optional[Path]:
         """
-        下载whl包文件
+        Download whl package file
         
         Args:
-            whl_url: whl包下载URL
-            version: 版本号
+            whl_url: whl package download URL
+            version: Version number
             
         Returns:
-            Optional[Path]: 下载的whl文件路径，如果失败返回None
+            Optional[Path]: Downloaded whl file path, returns None if failed
         """
         try:
-            # 从URL提取文件名
+            # Extract filename from URL
             filename = whl_url.split('/')[-1]
             if not filename.endswith('.whl'):
-                self.logger.error(f"URL格式错误，不是有效的whl文件: {whl_url}")
+                self.logger.error(f"URL format error, not a valid whl file: {whl_url}")
                 return None
             
-            # 保存路径
+            # Save path
             save_path = self.temp_dir / filename
             
-            self.logger.info(f"开始下载whl包: {whl_url}")
-            self.logger.info(f"保存到: {save_path}")
+            self.logger.info(f"Starting whl package download: {whl_url}")
+            self.logger.info(f"Saving to: {save_path}")
             
-            # 延迟加载下载函数
+            # Delay load download function
             global download_file
             if download_file is None:
                 download_file = _get_download_file()
             
-            # 使用项目统一的文件下载器
+            # Use project's unified file downloader
             success = await download_file(whl_url, str(save_path))
             
             if success and save_path.exists():
                 file_size = save_path.stat().st_size
-                self.logger.info(f"whl包下载成功，文件大小: {self._format_size(file_size)}")
+                self.logger.info(f"whl package download successful, file size: {self._format_size(file_size)}")
                 
-                # 验证WHL文件完整性
+                # Validate WHL file integrity
                 if not self._validate_whl_integrity(save_path):
-                    self.logger.error("❌ WHL文件完整性验证失败，可能文件损坏或不完整")
-                    # 删除损坏的文件
+                    self.logger.error("❌ WHL file integrity verification failed, file may be corrupted or incomplete")
+                    # Delete corrupted file
                     try:
                         save_path.unlink()
-                        self.logger.info("已删除损坏的WHL文件")
+                        self.logger.info("Corrupted WHL file deleted")
                     except Exception as e:
-                        self.logger.error(f"删除损坏文件失败: {e}")
+                        self.logger.error(f"Failed to delete corrupted file: {e}")
                     return None
                 
-                self.logger.info("✅ WHL文件完整性验证通过")
+                self.logger.info("✅ WHL file integrity verification passed")
                 
-                # 下载完成后，强制根据WHL包内部信息进行重命名
+                # After download complete, force rename based on WHL package internal info
                 original_filename = save_path.name
-                self.logger.info(f"下载完成，原始文件名: {original_filename}")
-                self.logger.info("执行强制重命名（硬性执行标准）...")
+                self.logger.info(f"Download completed, original filename: {original_filename}")
+                self.logger.info("Executing forced rename (strict standard)...")
                 
-                # 从WHL文件中读取包信息进行重命名
+                # Read package info from WHL file for renaming
                 package_info = self._extract_package_info_from_whl(save_path)
                 if package_info and package_info.get('name') and package_info.get('version'):
                     package_name = package_info['name']
                     package_version = package_info['version']
                     
-                    # 生成新的文件名
+                    # Generate new filename
                     new_filename = f"{package_name}-{package_version}-py3-none-any.whl"
                     
-                    self.logger.info(f"从WHL文件中提取包信息: {package_name} {package_version}")
-                    self.logger.info(f"执行强制重命名: {original_filename} -> {new_filename}")
+                    self.logger.info(f"Extracted package info from WHL file: {package_name} {package_version}")
+                    self.logger.info(f"Executing forced rename: {original_filename} -> {new_filename}")
                     
                     if new_filename != original_filename:
                         new_whl_path = self.temp_dir / new_filename
                         try:
-                            # 确保目标文件不存在
+                            # Ensure target file doesn't exist
                             if new_whl_path.exists():
                                 new_whl_path.unlink()
                             
                             save_path.rename(new_whl_path)
-                            self.logger.info(f"✅ 文件重命名成功: {original_filename} -> {new_whl_path.name}")
+                            self.logger.info(f"✅ File rename successful: {original_filename} -> {new_whl_path.name}")
                             save_path = new_whl_path
                         except Exception as rename_error:
-                            self.logger.error(f"❌ 文件重命名失败: {rename_error}")
-                            # 记录详细的错误信息以便调试
-                            self.logger.debug(f"重命名失败详情: 源文件={save_path}, 目标文件={new_whl_path}")
+                            self.logger.error(f"❌ File rename failed: {rename_error}")
+                            # Record detailed error info for debugging
+                            self.logger.debug(f"Rename failed details: source file={save_path}, target file={new_whl_path}")
                 else:
-                    self.logger.warning("⚠️ 无法从WHL文件中提取包信息，使用原始文件名")
+                    self.logger.warning("⚠️ Unable to extract package info from WHL file, using original filename")
                 
-                # 记录最终文件名
+                # Record final filename
                 final_filename = save_path.name
-                self.logger.info(f"最终文件名: {final_filename}")
+                self.logger.info(f"Final filename: {final_filename}")
                 
                 return save_path
             else:
-                self.logger.error("whl包下载失败")
+                self.logger.error("whl package download failed")
                 return None
                 
         except Exception as e:
-            self.logger.error(f"下载whl包时发生错误: {e}")
+            self.logger.error(f"Error occurred during whl package download: {e}")
             return None
     
     def _install_whl_package(self, whl_path: Path, python_path: str) -> Tuple[bool, str]:
         """
-        使用pip安装whl包
+        Install whl package using pip
         
         Args:
-            whl_path: whl文件路径
-            python_path: Python可执行文件路径
+            whl_path: whl file path
+            python_path: Python executable file path
             
         Returns:
-            Tuple[bool, str]: (安装是否成功, 错误信息)
+            Tuple[bool, str]: (whether installation was successful, error message)
         """
         try:
-            # 构建pip安装命令（优化网络配置）
+            # Build pip install command (optimize network configuration)
             pip_command = [
                 python_path, "-m", "pip", "install", 
                 "--upgrade", "--force-reinstall",
-                "--timeout", "120",  # 连接超时120秒
-                "--retries", "5",     # 增加重试次数
-                "--default-timeout", "1200",  # 整体操作超时600秒（10分钟）
-                "--no-cache-dir",     # 禁用缓存，避免缓存问题
-                "--disable-pip-version-check",  # 禁用版本检查，减少网络请求
+                "--timeout", "120",  # Connection timeout 120 seconds
+                "--retries", "5",     # Increase retry times
+                "--default-timeout", "1200",  # Overall operation timeout 1200 seconds (20 minutes)
+                "--no-cache-dir",     # Disable cache to avoid cache issues
+                "--disable-pip-version-check",  # Disable version check to reduce network requests
                 "-i", "https://intelpypi.intel.com/root/pypi/+simple/",
                 str(whl_path)
             ]
             
-            self.logger.info(f"开始安装whl包: {whl_path.name}")
-            self.logger.debug(f"安装命令: {' '.join(pip_command)}")
+            self.logger.info(f"Starting whl package installation: {whl_path.name}")
+            self.logger.debug(f"Installation command: {' '.join(pip_command)}")
             
-            # 执行pip安装
+            # Execute pip install
             result = run_with_logging(
                 pip_command,
                 command_name="pip_install_whl",
@@ -208,24 +208,24 @@ class WhlUpdater:
                 errors='ignore'
             )
             
-            # 记录安装结果
+            # Record installation result
             if result.stdout:
-                self.logger.info(f"pip安装输出: {result.stdout.strip()}")
+                self.logger.info(f"pip installation output: {result.stdout.strip()}")
             
-            # 检查stderr中是否有警告信息
+            # Check if there are warnings in stderr
             if result.stderr:
                 stderr_content = result.stderr.strip()
-                self.logger.warning(f"pip安装警告: {stderr_content}")
+                self.logger.warning(f"pip installation warning: {stderr_content}")
                 
-                # 检查是否包含"Ignoring invalid distribution"警告
+                # Check if contains "Ignoring invalid distribution" warning
                 if "Ignoring invalid distribution" in stderr_content:
-                    self.logger.warning("检测到无效的包分发目录，尝试清理后重新安装")
+                    self.logger.warning("Invalid package distribution directory detected, attempting cleanup and reinstallation")
                     
-                    # 尝试清理无效分发
+                    # Try to cleanup invalid distributions
                     cleanup_success = self._cleanup_invalid_distributions(python_path)
                     if cleanup_success:
-                        self.logger.info("无效分发清理完成，重新尝试安装")
-                        # 重新执行安装
+                        self.logger.info("Invalid distribution cleanup completed, retrying installation")
+                        # Re-execute installation
                         result = run_with_logging(
                             pip_command,
                             command_name="pip_install_retry",
@@ -237,282 +237,283 @@ class WhlUpdater:
                         )
             
             if result.returncode == 0:
-                self.logger.info("whl包安装成功")
+                self.logger.info("whl package installation successful")
                 return True, ""
             else:
-                error_msg = result.stderr.strip() if result.stderr else "未知错误"
-                self.logger.error(f"whl包安装失败: {error_msg}")
+                error_msg = result.stderr.strip() if result.stderr else "Unknown error"
+                self.logger.error(f"whl package installation failed: {error_msg}")
                 return False, error_msg
                 
         except Exception as e:
-            error_msg = f"执行pip安装时发生错误: {e}"
+            error_msg = f"Error occurred during pip installation: {e}"
             self.logger.error(error_msg)
             return False, error_msg
     
     def _cleanup_invalid_distributions(self, python_path: str) -> bool:
         """
-        清理无效的包分发目录
+        Clean up invalid package distribution directories
         
         Args:
-            python_path: Python可执行文件路径
+            python_path: Python executable file path
             
         Returns:
-            bool: 清理是否成功
+            bool: Whether cleanup was successful
         """
         try:
-            # 使用pip check命令检查无效分发
+            # Use pip check command to check invalid distributions
             check_command = [python_path, "-m", "pip", "check"]
             result = run_with_logging(check_command, command_name="pip_check", capture_output=True, text=True)
             
             if result.returncode != 0:
-                self.logger.warning(f"检测到包环境问题: {result.stdout.strip()}")
+                self.logger.warning(f"Package environment issue detected: {result.stdout.strip()}")
                 
-                # 尝试使用pip cache purge清理缓存
+                # Try to use pip cache purge to clean cache
                 cache_command = [python_path, "-m", "pip", "cache", "purge"]
                 cache_result = run_with_logging(cache_command, command_name="pip_cache_purge", capture_output=True, text=True)
                 
                 if cache_result.returncode == 0:
-                    self.logger.info("pip缓存清理成功")
+                    self.logger.info("pip cache cleanup successful")
                 else:
-                    self.logger.warning(f"pip缓存清理失败: {cache_result.stderr.strip()}")
+                    self.logger.warning(f"pip cache cleanup failed: {cache_result.stderr.strip()}")
                 
-                # 清理以~开头的临时包目录
+                # Clean up temporary package directories starting with ~
                 temp_cleanup_success = self._cleanup_temp_package_dirs(python_path)
                 if temp_cleanup_success:
-                    self.logger.info("临时包目录清理完成")
+                    self.logger.info("Temporary package directory cleanup completed")
                 else:
-                    self.logger.warning("临时包目录清理失败或无需清理")
+                    self.logger.warning("Temporary package directory cleanup failed or not needed")
                 
                 return True
             
-            self.logger.info("包环境检查正常")
+            self.logger.info("Package environment check normal")
             return True
             
         except Exception as e:
-            self.logger.error(f"清理无效分发时发生错误: {e}")
+            self.logger.error(f"Error occurred while cleaning invalid distributions: {e}")
             return False
 
     def _cleanup_temp_package_dirs(self, python_path: str) -> bool:
         """
-        清理以~开头且以.dist-info或.egg-info结尾的临时包目录
+        Clean up temporary package directories starting with ~ and ending with .dist-info or .egg-info
         
         Args:
-            python_path: Python可执行文件路径
+            python_path: Python executable file path
             
         Returns:
-            bool: 清理是否成功（True表示成功或无需清理，False表示失败）
+            bool: Whether cleanup was successful (True means successful or no cleanup needed, False means failed)
         """
         try:
             import os
             import shutil
             from pathlib import Path
             
-            # 获取Python安装目录
+            # Get Python installation directory
             python_dir = Path(python_path).parent
             site_packages_dir = python_dir / "lib" / "site-packages"
             
             if not site_packages_dir.exists():
-                self.logger.warning(f"site-packages目录不存在: {site_packages_dir}")
-                return True  # 无需清理
+                self.logger.warning(f"site-packages directory does not exist: {site_packages_dir}")
+                return True  # No cleanup needed
             
-            # 查找以~开头且以.dist-info或.egg-info结尾的目录
+            # Find directories starting with ~ and ending with .dist-info or .egg-info
             temp_dirs_to_remove = []
             for item in site_packages_dir.iterdir():
                 if item.is_dir():
                     item_name = item.name
-                    # 检查是否符合条件：以~开头且以.dist-info或.egg-info结尾
+                    # Check if condition is met: starts with ~ and ends with .dist-info or .egg-info
                     if (item_name.startswith('~') and 
                         (item_name.endswith('.dist-info') or item_name.endswith('.egg-info'))):
                         temp_dirs_to_remove.append(item)
-                        self.logger.info(f"发现临时包目录: {item_name}")
+                        self.logger.info(f"Temporary package directory found: {item_name}")
             
             if not temp_dirs_to_remove:
-                self.logger.info("未发现需要清理的临时包目录")
-                return True  # 无需清理
+                self.logger.info("No temporary package directories found for cleanup")
+                return True  # No cleanup needed
             
-            # 创建备份目录
+            # Create backup directory
             backup_dir = site_packages_dir / "backup_temp_packages"
             backup_dir.mkdir(exist_ok=True)
             
-            # 备份并删除临时目录
+            # Backup and delete temporary directories
             removed_count = 0
             for temp_dir in temp_dirs_to_remove:
                 try:
-                    # 移动到备份目录
+                    # Move to backup directory
                     backup_path = backup_dir / temp_dir.name
                     shutil.move(str(temp_dir), str(backup_path))
-                    self.logger.info(f"已备份并删除临时目录: {temp_dir.name}")
+                    self.logger.info(f"Temporary directory backed up and deleted: {temp_dir.name}")
                     removed_count += 1
                 except Exception as e:
-                    self.logger.warning(f"删除临时目录 {temp_dir.name} 失败: {e}")
+                    self.logger.warning(f"Failed to delete temporary directory {temp_dir.name}: {e}")
             
-            self.logger.info(f"临时包目录清理完成: 清理了 {removed_count} 个目录")
+            self.logger.info(f"Temporary package directory cleanup completed: cleaned {removed_count} directories")
             
-            # 如果备份目录为空，删除备份目录
+            # If backup directory is empty, delete backup directory
             if not any(backup_dir.iterdir()):
                 backup_dir.rmdir()
             
             return True
             
         except Exception as e:
-            self.logger.error(f"清理临时包目录时发生错误: {e}")
+            self.logger.error(f"Error occurred while cleaning temporary package directories: {e}")
             return False
 
     def _create_backup(self, package_name: str, python_path: str) -> bool:
         """
-        创建当前包备份
+        Create current package backup
         
         Args:
-            package_name: 包名称
+            package_name: Package name
+            python_path: Python executable file path
             
         Returns:
-            bool: 备份是否成功
+            bool: Whether backup was successful
         """
         if not self.backup_enabled:
             return True
             
         try:
             
-            # 获取当前安装版本
+            # Get current installed version
             freeze_command = [python_path, "-m", "pip", "freeze", "--all"]
             result = run_with_logging(freeze_command, command_name="pip_freeze", capture_output=True, text=True)
             
             if result.returncode == 0:
-                # 查找包信息
+                # Find package info
                 for line in result.stdout.strip().split('\n'):
                     if line.startswith(package_name + '=='):
                         version = line.split('==')[1]
                         backup_info = f"{package_name}=={version}"
                         
-                        # 保存备份信息
+                        # Save backup info
                         backup_file = self.temp_dir / f"{package_name}_backup.txt"
                         with open(backup_file, 'w', encoding='utf-8') as f:
                             f.write(backup_info)
                         
-                        self.logger.info(f"创建备份: {backup_info}")
+                        self.logger.info(f"Backup created: {backup_info}")
                         return True
             
-            self.logger.warning(f"未找到包 {package_name} 的当前安装信息")
+            self.logger.warning(f"Package {package_name} current installation info not found")
             return False
             
         except Exception as e:
-            self.logger.error(f"创建备份失败: {e}")
+            self.logger.error(f"Backup creation failed: {e}")
             return False
     
     def _rollback_package(self, package_name: str) -> bool:
         """
-        回滚包到备份版本
+        Roll back package to backup version
         
         Args:
-            package_name: 包名称
+            package_name: Package name
             
         Returns:
-            bool: 回滚是否成功
+            bool: Whether rollback was successful
         """
         try:
             python_path = self._get_python_executable()
             if not python_path:
                 return False
             
-            # 读取备份信息
+            # Read backup info
             backup_file = self.temp_dir / f"{package_name}_backup.txt"
             if not backup_file.exists():
-                self.logger.warning("未找到备份文件，无法回滚")
+                self.logger.warning("Backup file not found, cannot rollback")
                 return False
             
             with open(backup_file, 'r', encoding='utf-8') as f:
                 backup_info = f.read().strip()
             
-            # 执行回滚安装
+            # Execute rollback installation
             rollback_command = [python_path, "-m", "pip", "install", backup_info]
             result = run_with_logging(rollback_command, command_name="pip_rollback", capture_output=True, text=True)
             
             if result.returncode == 0:
-                self.logger.info(f"回滚成功: {backup_info}")
+                self.logger.info(f"Rollback successful: {backup_info}")
                 return True
             else:
-                self.logger.error(f"回滚失败: {result.stderr}")
+                self.logger.error(f"Rollback failed: {result.stderr}")
                 return False
                 
         except Exception as e:
-            self.logger.error(f"回滚时发生错误: {e}")
+            self.logger.error(f"Error occurred during rollback: {e}")
             return False
     
     def _is_valid_whl_filename(self, filename: str) -> bool:
         """
-        验证WHL文件名是否符合PEP 427规范
+        Validate if WHL filename conforms to PEP 427 specification
         
         Args:
-            filename: 文件名
+            filename: Filename
             
         Returns:
-            bool: 是否有效
+            bool: Whether it's valid
         """
         if not filename.endswith('.whl'):
             return False
         
-        # 移除.whl后缀
+        # Remove .whl suffix
         base_name = filename[:-4]
         parts = base_name.split('-')
         
-        # 有效的WHL文件名应该至少有4个部分：包名-版本-py标签-平台标签
+        # Valid WHL filename should have at least 3 parts: package name-version-py tag-platform tag
         if len(parts) < 3:
             return False
         
-        # 检查是否有版本号（版本号通常以数字开头）
+        # Check if there's a version number (version numbers usually start with a digit)
         has_version = any(part and part[0].isdigit() for part in parts)
         
-        # 检查是否有Python标签（包含'py'或'cp'）
+        # Check if there's a Python tag (contains 'py' or 'cp')
         has_python_tag = any('py' in part.lower() or 'cp' in part.lower() for part in parts)
         
-        # 检查包名是否为通用名称（如'package'），如果是则视为无效
+        # Check if package name is a generic name (like 'package'), if so consider invalid
         package_name = parts[0]
         generic_package_names = ['package', 'test', 'temp', 'unknown', 'whl']
         has_generic_name = package_name.lower() in generic_package_names
         
-        # 额外验证：检查包名是否符合PEP 427规范
+        # Additional validation: check if package name conforms to PEP 427 specification
         is_valid_package_name = self._is_valid_package_name(package_name)
         
         return has_version and has_python_tag and not has_generic_name and is_valid_package_name
     
     def _extract_package_info_from_whl(self, whl_path: Path) -> Optional[dict]:
         """
-        从WHL文件中提取包信息（名称、版本等）
+        Extract package info (name, version, etc.) from WHL file
         
         Args:
-            whl_path: WHL文件路径
+            whl_path: WHL file path
             
         Returns:
-            Optional[dict]: 包含包信息的字典，如果失败返回None
+            Optional[dict]: Dictionary containing package info, returns None if failed
         """
         try:
             import zipfile
             import tempfile
             import os
             
-            # WHL文件本质上是zip压缩包
+            # WHL files are essentially zip archives
             with zipfile.ZipFile(whl_path, 'r') as whl_zip:
-                # 查找包含元数据的文件 - 放宽条件，查找所有.dist-info和.egg-info目录
+                # Find metadata files - relax condition, look for all .dist-info and .egg-info directories
                 metadata_files = []
                 for filename in whl_zip.namelist():
-                    # 匹配任何.dist-info/METADATA或.egg-info/PKG-INFO文件
+                    # Match any .dist-info/METADATA or .egg-info/PKG-INFO file
                     if (filename.endswith('/METADATA') and '.dist-info' in filename) or \
                        (filename.endswith('/PKG-INFO') and '.egg-info' in filename):
                         metadata_files.append(filename)
                 
                 if not metadata_files:
-                    self.logger.warning(f"在WHL文件中未找到元数据文件: {whl_path}")
+                    self.logger.warning(f"Metadata file not found in WHL file: {whl_path}")
                     return None
                 
-                # 使用第一个找到的元数据文件
+                # Use first found metadata file
                 metadata_file = metadata_files[0]
-                self.logger.info(f"找到元数据文件: {metadata_file}")
+                self.logger.info(f"Metadata file found: {metadata_file}")
                 
-                # 提取元数据文件内容
+                # Extract metadata file content
                 with whl_zip.open(metadata_file) as f:
                     metadata_content = f.read().decode('utf-8', errors='ignore')
                 
-                # 解析元数据
+                # Parse metadata
                 package_info = {}
                 for line in metadata_content.split('\n'):
                     line = line.strip()
@@ -525,145 +526,145 @@ class WhlUpdater:
                     elif line.startswith('Author:'):
                         package_info['author'] = line.split(':', 1)[1].strip()
                     
-                    # 如果已经找到包名和版本，可以提前退出
+                    # If package name and version are found, can exit early
                     if 'name' in package_info and 'version' in package_info:
                         break
                 
                 if 'name' in package_info and 'version' in package_info:
-                    self.logger.info(f"成功从WHL文件中提取包信息: {package_info['name']} {package_info['version']}")
+                    self.logger.info(f"Successfully extracted package info from WHL file: {package_info['name']} {package_info['version']}")
                     return package_info
                 else:
-                    self.logger.warning(f"从WHL文件中提取包信息不完整: {package_info}")
+                    self.logger.warning(f"Package info extraction from WHL file incomplete: {package_info}")
                     return None
                     
         except Exception as e:
-            self.logger.warning(f"从WHL文件中提取包信息时发生错误: {e}")
+            self.logger.warning(f"Error occurred during package info extraction from WHL file: {e}")
             return None
     
     def _extract_package_name(self, whl_filename: str) -> str:
         """
-        从whl文件名提取包名称
+        Extract package name from whl filename
         
         Args:
-            whl_filename: whl文件名
+            whl_filename: whl filename
             
         Returns:
-            str: 包名称
+            str: Package name
         """
-        # whl文件名格式: package_name-version-py3-none-any.whl
-        # 提取包名称（第一个连字符之前的部分）
+        # whl filename format: package_name-version-py3-none-any.whl
+        # Extract package name (part before first hyphen)
         base_name = whl_filename.replace('.whl', '')
         parts = base_name.split('-')
         
-        # 包名称通常是第一个连字符之前的部分
-        # 但有些包可能有多个连字符，需要找到版本号开始的位置
+        # Package name is usually the part before the first hyphen
+        # But some packages may have multiple hyphens, need to find where version number starts
         for i, part in enumerate(parts):
-            # 版本号通常以数字开头
+            # Version numbers usually start with a digit
             if part and part[0].isdigit():
                 package_name = '-'.join(parts[:i])
                 
-                # 验证包名是否符合PEP 427规范
-                # 包名只能包含字母、数字、下划线、点和连字符
-                # 不能以连字符开头或结尾，不能有连续连字符
+                # Validate if package name conforms to PEP 427 specification
+                # Package name can only contain letters, digits, underscores, dots and hyphens
+                # Cannot start or end with hyphen, cannot have consecutive hyphens
                 if self._is_valid_package_name(package_name):
                     return package_name.replace('_', '-')
                 else:
-                    # 如果包名不符合规范，尝试清理
+                    # If package name doesn't conform to specification, try cleaning
                     cleaned_name = self._clean_package_name(package_name)
-                    self.logger.warning(f"包名 '{package_name}' 不符合规范，使用清理后的名称: '{cleaned_name}'")
+                    self.logger.warning(f"Package name '{package_name}' does not conform to specification, using cleaned name: '{cleaned_name}'")
                     return cleaned_name.replace('_', '-')
         
-        # 如果找不到版本号，返回第一个部分
+        # If version number not found, return first part
         return parts[0] if parts else "unknown"
 
     def _force_rename_whl_file(self, whl_path: Path, original_filename: str) -> Optional[Path]:
         """
-        强制重命名WHL文件，根据包内信息生成符合PEP 427规范的文件名
+        Force rename WHL file, generate PEP 427 compliant filename based on package info
         
         Args:
-            whl_path: WHL文件路径
-            original_filename: 原始文件名
+            whl_path: WHL file path
+            original_filename: Original filename
             
         Returns:
-            Optional[Path]: 重命名后的文件路径，如果失败返回None
+            Optional[Path]: Renamed file path, returns None if failed
         """
         try:
-            # 从WHL文件中提取包信息
+            # Extract package info from WHL file
             package_info = self._extract_package_info_from_whl(whl_path)
             
             if package_info and 'name' in package_info and 'version' in package_info:
-                # 使用从WHL文件中提取的真实包名和版本
+                # Use real package name and version extracted from WHL file
                 package_name = package_info['name']
                 version = package_info['version']
                 
-                # 验证包名是否符合PEP 427规范
+                # Validate if package name conforms to PEP 427 specification
                 if not self._is_valid_package_name(package_name):
-                    self.logger.warning(f"包名 '{package_name}' 不符合PEP 427规范，进行清理")
+                    self.logger.warning(f"Package name '{package_name}' does not conform to PEP 427 specification, cleaning")
                     package_name = self._clean_package_name(package_name)
-                    self.logger.info(f"清理后的包名: {package_name}")
+                    self.logger.info(f"Cleaned package name: {package_name}")
                 
-                # 生成符合PEP 427规范的文件名
+                # Generate PEP 427 compliant filename
                 new_filename = self._generate_whl_filename(package_name, version)
                 new_path = whl_path.parent / new_filename
                 
-                self.logger.info(f"执行强制重命名: {original_filename} -> {new_filename}")
+                self.logger.info(f"Executing forced rename: {original_filename} -> {new_filename}")
                 
-                # 重命名文件
+                # Rename file
                 whl_path.rename(new_path)
-                self.logger.info(f"✅ 文件重命名成功: {new_filename}")
+                self.logger.info(f"✅ File rename successful: {new_filename}")
                 
                 return new_path
             else:
-                # 如果无法提取包信息，使用备用方案
-                self.logger.warning(f"无法从WHL文件中提取包信息，使用备用重命名方案")
+                # If unable to extract package info, use alternative scheme
+                self.logger.warning(f"Unable to extract package info from WHL file, using alternative rename scheme")
                 
-                # 从原始文件名提取包名
+                # Extract package name from original filename
                 package_name = self._extract_package_name(original_filename)
                 
-                # 验证并清理包名
+                # Validate and clean package name
                 if not self._is_valid_package_name(package_name):
                     package_name = self._clean_package_name(package_name)
-                    self.logger.info(f"备用方案清理后的包名: {package_name}")
+                    self.logger.info(f"Package name cleaned by alternative scheme: {package_name}")
                 
-                # 生成符合PEP 427规范的备用文件名
+                # Generate PEP 427 compliant alternative filename
                 new_filename = self._generate_whl_filename(package_name, "0.0.1")
                 new_path = whl_path.parent / new_filename
                 
-                self.logger.info(f"执行备用重命名: {original_filename} -> {new_filename}")
+                self.logger.info(f"Executing alternative rename: {original_filename} -> {new_filename}")
                 
-                # 重命名文件
+                # Rename file
                 whl_path.rename(new_path)
-                self.logger.info(f"✅ 文件重命名成功: {new_filename}")
+                self.logger.info(f"✅ File rename successful: {new_filename}")
                 
                 return new_path
                 
         except Exception as e:
-            self.logger.error(f"强制重命名WHL文件失败: {e}")
+            self.logger.error(f"Forced WHL file rename failed: {e}")
             return None
     
     def _is_valid_package_name(self, package_name: str) -> bool:
         """
-        验证包名是否符合PEP 427规范
+        Validate if package name conforms to PEP 427 specification
         
         Args:
-            package_name: 包名
+            package_name: Package name
             
         Returns:
-            bool: 是否有效
+            bool: Whether it's valid
         """
-        # 包名不能为空
+        # Package name cannot be empty
         if not package_name:
             return False
         
-        # 不能以连字符开头或结尾
+        # Cannot start or end with hyphen
         if package_name.startswith('-') or package_name.endswith('-'):
             return False
         
-        # 不能有连续连字符
+        # Cannot have consecutive hyphens
         if '--' in package_name:
             return False
         
-        # 只能包含字母、数字、下划线、点和连字符
+        # Can only contain letters, digits, underscores, dots and hyphens
         if not re.match(r'^[a-zA-Z0-9._-]+$', package_name):
             return False
         
@@ -671,27 +672,27 @@ class WhlUpdater:
     
     def _clean_package_name(self, package_name: str) -> str:
         """
-        清理包名使其符合PEP 427规范
+        Clean up package name to conform to PEP 427 specification
         
         Args:
-            package_name: 包名
+            package_name: Package name
             
         Returns:
-            str: 清理后的包名
+            str: Cleaned package name
         """
-        # 移除开头和结尾的连字符
+        # Remove leading and trailing hyphens
         cleaned = package_name.strip('-') 
         
-        # 替换连续连字符为单个连字符
+        # Replace consecutive hyphens with single hyphen
         cleaned = re.sub(r'-+', '-', cleaned)
         
-        # 只保留字母、数字、下划线、点和连字符
+        # Only keep letters, digits, underscores, dots and hyphens
         cleaned = re.sub(r'[^a-zA-Z0-9._-]', '', cleaned)
         
-        # 再次确保不以连字符开头或结尾
+        # Again ensure not starting or ending with hyphen
         cleaned = cleaned.strip('-')
         
-        # 如果清理后为空，返回默认名称
+        # If cleaned name is empty, return default name
         if not cleaned:
             return "unknown_package"
         
@@ -699,107 +700,107 @@ class WhlUpdater:
     
     def _generate_whl_filename(self, package_name: str, package_version: str) -> str:
         """
-        生成符合PEP 427规范的WHL文件名
+        Generate PEP 427 compliant WHL filename
         
         Args:
-            package_name: 包名
-            package_version: 包版本
+            package_name: Package name
+            package_version: Package version
             
         Returns:
-            str: 生成的WHL文件名
+            str: Generated WHL filename
         """
-        # 生成标准WHL文件名格式: {package}-{version}-py3-none-any.whl
-        # 注意：pip的正则表达式 [^\\-]+ 要求包名不能包含连字符
-        # 将包名中的连字符转换为下划线，以确保pip能够正确解析
+        # [Generate standard] WHL file [name format]: {package}-{version}-py3-none-any.whl
+        # [Note]: pip [regular expression] [^\-]+ [requires package name cannot contain hyphens]
+        # [Convert hyphens in package name to underscores] to [ensure] pip [can parse correctly]
         clean_name = package_name.replace('-', '_')
         return f"{clean_name}-{package_version}-py3-none-any.whl"
     
     def _validate_whl_integrity(self, whl_path: Path) -> bool:
         """
-        验证WHL文件完整性
+        Validate WHL file integrity
         
         Args:
-            whl_path: WHL文件路径
+            whl_path: WHL file path
             
         Returns:
-            bool: 文件是否完整有效
+            bool: Whether file is complete and valid
         """
         try:
             if not whl_path.exists():
-                self.logger.error(f"WHL文件不存在: {whl_path}")
+                self.logger.error(f"WHL file does not exist: {whl_path}")
                 return False
             
-            # 检查文件大小
+            # Check file [size]
             file_size = whl_path.stat().st_size
-            if file_size < 100:  # WHL文件通常至少几百字节
-                self.logger.error(f"WHL文件大小异常: {file_size} bytes")
+            if file_size < 100:  # WHL files are usually at least a few hundred bytes
+                self.logger.error(f"WHL file size abnormal: {file_size} bytes")
                 return False
             
-            # 检查是否为有效的ZIP文件
+            # Check [if it's a] valid [ZIP file]
             import zipfile
             try:
                 with zipfile.ZipFile(whl_path, 'r') as whl_zip:
-                    # 检查ZIP文件是否损坏
+                    # Check [if ZIP file is] corrupted
                     if whl_zip.testzip() is not None:
-                        self.logger.error("WHL文件ZIP结构损坏")
+                        self.logger.error("WHL file ZIP structure corrupted")
                         return False
                     
-                    # 检查是否包含必要的文件结构
+                    # Check [if it contains necessary] file [structure]
                     file_list = whl_zip.namelist()
                     
-                    # 检查是否包含.dist-info目录
+                    # Check [if it contains] .dist-info directory
                     dist_info_files = [f for f in file_list if '.dist-info' in f]
                     if not dist_info_files:
-                        self.logger.error("WHL文件缺少.dist-info目录")
+                        self.logger.error("WHL file missing .dist-info directory")
                         return False
                     
-                    # 提取.dist-info目录路径
+                    # [Extract] .dist-info directory path
                     dist_info_dirs = set()
                     for file_path in dist_info_files:
-                        # 提取目录部分，例如：executionkit-0.0.2.dist-info/
+                        # [Extract] directory [part], [example]: executionkit-0.0.2.dist-info/
                         dir_path = file_path.split('/')[0] + '/' if '/' in file_path else file_path.split('\\')[0] + '\\'
                         dist_info_dirs.add(dir_path)
                     
-                    # 检查是否包含METADATA文件
+                    # Check [if it contains] METADATA file
                     metadata_found = False
                     for dist_dir in dist_info_dirs:
                         metadata_file = dist_dir + "METADATA"
                         if metadata_file in file_list:
-                            # 验证METADATA文件内容
+                            # Validate METADATA file [content]
                             with whl_zip.open(metadata_file) as f:
                                 metadata_content = f.read().decode('utf-8', errors='ignore')
                                 if 'Name:' not in metadata_content or 'Version:' not in metadata_content:
-                                    self.logger.error("METADATA文件内容不完整")
+                                    self.logger.error("METADATA file content incomplete")
                                     return False
                             metadata_found = True
                             break
                     
                     if not metadata_found:
-                        self.logger.error("WHL文件缺少METADATA文件")
+                        self.logger.error("WHL file missing METADATA file")
                         return False
                     
-                    # 检查是否包含包目录
+                    # Check [if it contains package] directory
                     package_files = [f for f in file_list if '.dist-info' not in f and '__pycache__' not in f and not f.endswith('/')]
                     if not package_files:
-                        self.logger.error("WHL文件缺少包文件")
+                        self.logger.error("WHL file missing package files")
                         return False
                     
-                    self.logger.debug(f"WHL文件结构验证通过: {len(file_list)} 个文件")
+                    self.logger.debug(f"WHL file structure verification passed: {len(file_list)} files")
                     return True
                     
             except zipfile.BadZipFile:
-                self.logger.error("WHL文件不是有效的ZIP格式")
+                self.logger.error("WHL file is not a valid ZIP format")
                 return False
             except Exception as e:
-                self.logger.error(f"验证WHL文件完整性时发生错误: {e}")
+                self.logger.error(f"Error occurred while validating WHL file integrity: {e}")
                 return False
                 
         except Exception as e:
-            self.logger.error(f"验证WHL文件完整性失败: {e}")
+            self.logger.error(f"WHL file integrity validation failed: {e}")
             return False
     
     def _format_size(self, size_bytes: int) -> str:
-        """格式化文件大小显示"""
+        """[Format file size display]"""
         if size_bytes == 0:
             return "0B"
         size_names = ["B", "KB", "MB", "GB"]
@@ -810,10 +811,10 @@ class WhlUpdater:
         return f"{size_bytes:.1f} {size_names[i]}"
     
     def _cleanup_temp_files(self):
-        """清理临时文件"""
+        """[Cleanup temporary files]"""
         try:
             if self.temp_dir.exists():
-                # 保留备份文件，删除其他临时文件
+                # [Keep] backup files, delete [other temporary] files
                 for item in self.temp_dir.iterdir():
                     if not item.name.endswith('_backup.txt'):
                         if item.is_file():
@@ -821,44 +822,44 @@ class WhlUpdater:
                         else:
                             shutil.rmtree(item)
                 
-                self.logger.debug("临时文件清理完成")
+                self.logger.debug("Temporary file cleanup completed")
         except Exception as e:
-            self.logger.warning(f"清理临时文件时发生错误: {e}")
+            self.logger.warning(f"Error occurred while cleaning temporary files: {e}")
     
     async def update_from_whl(self, whl_url: str, python_path: str) -> bool:
         """
-        根据whl包URL进行覆盖更新
+        Perform overlay update based on whl package URL
         
         Args:
-            whl_url: whl包下载URL
-            version: 版本号
+            whl_url: whl package download URL
+            python_path: Python executable path
             
         Returns:
-            bool: 更新是否成功
+            bool: Whether update was successful
         """
-        self.logger.info(f"开始WHL包更新流程，URL: {whl_url}")
+        self.logger.info(f"Starting WHL package update process, URL: {whl_url}")
         
-        # 下载whl包
+        # Download whl [package]
         whl_path = await self._download_whl_file(whl_url)
         if not whl_path:
-            self.logger.error("whl包下载失败")
+            self.logger.error("WHL package download failed")
             return False
         
-        # 提取包名称
+        # [Extract package name]
         package_name = self._extract_package_name(whl_path.name)
-        self.logger.info(f"检测到包名称: {package_name}")
+        self.logger.info(f"Detected package name: {package_name}")
         
-        # 创建备份
-        backup_created = self._create_backup(package_name)
+        # Create backup
+        backup_created = self._create_backup(package_name, python_path)
         if not backup_created:
-            self.logger.warning("备份创建失败，继续执行更新")
+            self.logger.warning("Backup creation failed, continuing with update")
         
-        # 执行安装
+        # Execute [installation]
         success = False
         error_msg = ""
         
         for attempt in range(self.max_retries):
-            self.logger.info(f"尝试安装 (第 {attempt + 1}/{self.max_retries} 次)")
+            self.logger.info(f"Attempting installation (attempt {attempt + 1}/{self.max_retries} times)")
             
             success, error_msg = self._install_whl_package(whl_path, python_path)
             
@@ -866,146 +867,147 @@ class WhlUpdater:
                 break
             else:
                 if attempt < self.max_retries - 1:
-                    wait_time = 2 ** attempt  # 指数退避
-                    self.logger.info(f"安装失败，等待 {wait_time}秒后重试...")
+                    wait_time = 2 ** attempt  # Exponential backoff
+                    self.logger.info(f"Installation failed, waiting for {wait_time} seconds before retry...")
                     time.sleep(wait_time)
         
-        # 处理安装结果
+        # [Process installation result]
         if success:
-            self.logger.info("WHL包更新成功")
-            # 清理临时文件（保留备份）
+            self.logger.info("WHL package update successful")
+            # [Cleanup temporary] files ([keep] backups)
             self._cleanup_temp_files()
             return True
         else:
-            self.logger.error(f"WHL包更新失败: {error_msg}")
+            self.logger.error(f"WHL package update failed: {error_msg}")
             
-            # 尝试回滚
+            # Try [rollback]
             if backup_created:
-                self.logger.info("开始回滚到备份版本")
+                self.logger.info("Starting rollback to backup version")
                 rollback_success = self._rollback_package(package_name)
                 if rollback_success:
-                    self.logger.info("回滚成功")
+                    self.logger.info("Rollback successful")
                 else:
-                    self.logger.error("回滚失败")
+                    self.logger.error("Rollback failed")
             
             return False
 
 
 def update_from_whl_sync(whl_url: str, python_path: str) -> dict:
     """
-    便捷函数：根据whl包URL进行覆盖更新（同步接口）
+    Convenience function: Perform overlay update based on whl package URL (synchronous interface)
     
     Args:
-        whl_url: whl包下载URL
+        whl_url: whl package download URL
+        python_path: Python executable path
         
     Returns:
-        dict: 更新结果，包含success和error字段
+        dict: Update result, containing success and error fields
     """
     updater = WhlUpdater()
     
-    # 同步版本的更新逻辑
+    # Synchronous version [of] update [logic]
     logger = get_logger()
-    logger.info(f"开始同步WHL包更新流程，URL: {whl_url}")
+    logger.info(f"Starting synchronous WHL package update process, URL: {whl_url}")
     
     try:
-        # 从URL提取文件名
+        # [Extract] file [name] from URL
         whl_filename = whl_url.split('/')[-1]
         if not whl_filename.endswith('.whl'):
-            logger.error(f"URL格式错误，不是有效的whl文件: {whl_url}")
-            return {"success": False, "error": f"URL格式错误，不是有效的whl文件: {whl_url}"}
+            logger.error(f"URL format error, not a valid whl file: {whl_url}")
+            return {"success": False, "error": f"URL format error, not a valid whl file: {whl_url}"}
         
         whl_path = updater.temp_dir / whl_filename
         
-        # 使用同步版本的下载器
+        # [Use] synchronous version [of] downloader
         from .file_downloader import download_file_sync
         download_success = download_file_sync(whl_url, str(whl_path))
         
         if not download_success:
-            logger.error("WHL包下载失败")
-            return {"success": False, "error": "WHL包下载失败"}
+            logger.error("WHL package download failed")
+            return {"success": False, "error": "WHL package download failed"}
         
-        logger.info(f"WHL包下载完成: {whl_path}")
+        logger.info(f"WHL package download completed: {whl_path}")
         
-        # 下载完成后，进行WHL文件完整性验证和重命名检查
+        # After download complete, [perform] WHL file [integrity] validation [and rename] check
         original_filename = whl_path.name
-        logger.info(f"下载完成，原始文件名: {original_filename}")
+        logger.info(f"Download completed，Original filename: {original_filename}")
         
-        # 验证WHL文件完整性
+        # Validate WHL file [integrity]
         if not updater._validate_whl_integrity(whl_path):
-            logger.error("❌ WHL文件完整性验证失败，可能文件损坏或不完整")
-            # 删除损坏的文件
+            logger.error("❌ WHL file integrity verification failed，File may be corrupted or incomplete")
+            # Delete [corrupted] file
             try:
                 whl_path.unlink()
-                logger.info("已删除损坏的WHL文件")
+                logger.info("Corrupted WHL file deleted")
             except Exception as e:
-                logger.error(f"删除损坏文件失败: {e}")
-            return {"success": False, "error": "WHL文件完整性验证失败，可能文件损坏或不完整"}
+                logger.error(f"Failed to delete corrupted file: {e}")
+            return {"success": False, "error": "WHL file integrity verification failed, file may be corrupted or incomplete"}
         
-        logger.info("✅ WHL文件完整性验证通过")
+        logger.info("✅ WHL file integrity verification passed")
         
-        # 强制根据WHL包内部信息进行重命名（硬性执行标准）
-        logger.info(f"原始文件名: {original_filename}")
+        # [Force rename based on] WHL [package internal] info [strictly enforcing standards]
+        logger.info(f"Original filename: {original_filename}")
         
-        # 从WHL文件中读取包信息进行重命名
+        # [Read package] info from WHL file [for] renaming
         package_info = updater._extract_package_info_from_whl(whl_path)
         if package_info and package_info.get('name') and package_info.get('version'):
             package_name = package_info['name']
             package_version = package_info['version']
             
-            # 验证包名是否符合PEP 427规范
+            # Validate [if package name conforms to] PEP 427 [specification]
             if not updater._is_valid_package_name(package_name):
-                logger.warning(f"包名 '{package_name}' 不符合PEP 427规范，进行清理")
+                logger.warning(f"Package name '{package_name}' does not conform to PEP 427 specification, cleaning")
                 package_name = updater._clean_package_name(package_name)
-                logger.info(f"清理后的包名: {package_name}")
+                logger.info(f"Cleaned package name: {package_name}")
             
-            # 生成符合PEP 427规范的文件名
+            # [Generate PEP 427 compliant] file [name]
             new_filename = updater._generate_whl_filename(package_name, package_version)
             new_whl_path = updater.temp_dir / new_filename
             
-            logger.info(f"从WHL文件中提取包信息: {package_name} {package_version}")
-            logger.info(f"执行强制重命名: {original_filename} -> {new_filename}")
+            logger.info(f"Extracted package info from WHL file: {package_name} {package_version}")
+            logger.info(f"Executing forced rename: {original_filename} -> {new_filename}")
             
-            # 检查目标文件是否已存在
+            # Check [if target] file [already exists]
             if new_whl_path.exists():
-                logger.warning(f"目标文件已存在: {new_whl_path}")
-                # 删除已存在的文件
+                logger.warning(f"Target file already exists: {new_whl_path}")
+                # Delete [existing] file
                 try:
                     new_whl_path.unlink()
-                    logger.info("已删除已存在的文件")
+                    logger.info("Existing file deleted")
                 except Exception as e:
-                    logger.error(f"删除已存在文件失败: {e}")
+                    logger.error(f"Failed to delete existing file: {e}")
             
-            # 执行重命名
+            # Execute [rename]
             try:
                 whl_path.rename(new_whl_path)
-                logger.info(f"✅ 文件重命名成功: {new_filename}")
+                logger.info(f"✅ File rename successful: {new_filename}")
                 whl_path = new_whl_path
             except Exception as rename_error:
-                logger.error(f"❌ 文件重命名失败: {rename_error}")
-                # 记录详细的错误信息以便调试
-                logger.debug(f"重命名失败详情: 源文件={whl_path}, 目标文件={new_whl_path}")
+                logger.error(f"❌ File rename failed: {rename_error}")
+                # [Record detailed] error info [for] debugging
+                logger.debug(f"Rename failed details: source file={whl_path}, target file={new_whl_path}")
         else:
-            logger.warning("⚠️ 无法从WHL文件中提取包信息，使用原始文件名")
+            logger.warning("⚠️ Unable to extract package info from WHL file, using original filename")
         
-        # 记录最终文件名
+        # [Record final] file [name]
         final_filename = whl_path.name
-        logger.info(f"最终文件名: {final_filename}")
+        logger.info(f"Final filename: {final_filename}")
         
-        # 提取包名称
+        # [Extract package name]
         package_name = updater._extract_package_name(whl_path.name)
-        logger.info(f"检测到包名称: {package_name}")
+        logger.info(f"Detected package name: {package_name}")
         
-        # 创建备份
+        # Create backup
         backup_created = updater._create_backup(package_name, python_path)
         if not backup_created:
-            logger.warning("备份创建失败，继续执行更新")
+            logger.warning("Backup creation failed, continuing with update")
         
-        # 执行安装
+        # Execute [installation]
         success = False
         error_msg = ""
         
         for attempt in range(updater.max_retries):
-            logger.info(f"尝试安装 (第 {attempt + 1}/{updater.max_retries} 次)")
+            logger.info(f"Attempting installation (attempt {attempt + 1}/{updater.max_retries} times)")
             
             success, error_msg = updater._install_whl_package(whl_path, python_path)
             
@@ -1013,45 +1015,46 @@ def update_from_whl_sync(whl_url: str, python_path: str) -> dict:
                 break
             else:
                 if attempt < updater.max_retries - 1:
-                    wait_time = 2 ** attempt  # 指数退避
-                    logger.info(f"安装失败，等待 {wait_time}秒后重试...")
+                    wait_time = 2 ** attempt  # Exponential backoff
+                    logger.info(f"Installation failed, waiting for {wait_time} seconds before retry...")
                     import time
                     time.sleep(wait_time)
         
-        # 处理安装结果
+        # [Process installation result]
         if success:
-            logger.info("WHL包更新成功")
-            # 清理临时文件（保留备份）
+            logger.info("WHL package update successful")
+            # [Cleanup temporary] files ([keep] backups)
             # updater._cleanup_temp_files()
             return {"success": True, "error": ""}
         else:
-            logger.error(f"WHL包更新失败: {error_msg}")
+            logger.error(f"WHL package update failed: {error_msg}")
             
-            # 尝试回滚
+            # Try [rollback]
             if backup_created:
-                logger.info("开始回滚到备份版本")
+                logger.info("Starting rollback to backup version")
                 rollback_success = updater._rollback_package(package_name)
                 if rollback_success:
-                    logger.info("回滚成功")
+                    logger.info("Rollback successful")
                 else:
-                    logger.error("回滚失败")
+                    logger.error("Rollback failed")
             
             return {"success": False, "error": error_msg}
             
     except Exception as e:
-        logger.error(f"同步WHL包更新过程中发生错误: {e}")
+        logger.error(f"Error occurred during synchronous WHL package update: {e}")
         return {"success": False, "error": str(e)}
 
 
 def update_from_whl(whl_url: str, python_path: str) -> bool:
     """
-    便捷函数：根据whl包URL进行覆盖更新（异步接口，兼容旧版本）
+    Convenience function: Perform overlay update based on whl package URL (asynchronous interface, compatible with old versions)
     
     Args:
-        whl_url: whl包下载URL
+        whl_url: whl package download URL
+        python_path: Python executable path
         
     Returns:
-        bool: 更新是否成功
+        bool: Whether update was successful
     """
     import asyncio
     updater = WhlUpdater()

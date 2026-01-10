@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-核心模块
-提供应用生命周期管理和保活机制
+core module
+Provide application lifecycle management and activation mechanisms
 """
 
 from .application import LocalAgentApplication

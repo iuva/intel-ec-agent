@@ -1,25 +1,25 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-WebSocket消息管理器
-实现统一消息处理和临时注册机制，支持全局任意位置临时注册消息处理器
+WebSocket message manager
+Implements unified message processing and temporary registration mechanism, supports temporary message handler registration from any global location
 
-使用示例：
-1. 注册永久消息处理器（在应用启动时注册）
+Usage examples:
+1. Register permanent message handler (registered when application starts)
    from local_agent.websocket.message_manager import message_manager
    
    @message_manager.register_handler("healthy")
    async def handle_ping(message):
-       # 处理ping消息
+       # Handle ping message
        pass
 
-2. 临时注册消息处理器（在任意位置注册）
+2. Temporarily register message handler (register from any location)
    handler_id = message_manager.register_temporary_handler("custom_type", async_handler_func)
    
-   # 使用后取消注册
+   # Unregister after use
    message_manager.unregister_temporary_handler(handler_id)
 
-3. 发送消息
+3. Send message
    from local_agent.websocket.message_sender import send_message
    await send_message({"type": "status", "data": "running"})
 """
@@ -35,7 +35,7 @@ from ..logger import get_logger
 
 @dataclass
 class MessageHandler:
-    """消息处理器定义"""
+    """Message handler definition"""
     handler_id: str
     message_type: str
     handler_func: Callable
@@ -44,40 +44,40 @@ class MessageHandler:
 
 
 class WebSocketMessageManager:
-    """WebSocket消息管理器"""
+    """WebSocket message manager"""
     
     def __init__(self):
         self.logger = get_logger(__name__)
         
-        # 消息处理器注册表
+        # Message handler registry
         self._handlers: Dict[str, List[MessageHandler]] = {}
         
-        # 临时处理器ID集合
+        # Temporary handler ID set
         self._temporary_handler_ids: Set[str] = set()
         
-        # WebSocket客户端引用
+        # WebSocket client reference
         self._websocket_client = None
         
-        # 锁，用于线程安全
+        # Lock for thread safety
         self._lock = asyncio.Lock()
         
-        self.logger.info("WebSocket消息管理器初始化完成")
+        self.logger.info("WebSocket message manager initialized")
     
     def set_websocket_client(self, websocket_client):
-        """设置WebSocket客户端引用"""
+        """Set WebSocket client reference"""
         self._websocket_client = websocket_client
-        self.logger.info("已设置WebSocket客户端引用")
+        self.logger.info("WebSocket client reference set")
     
     def register_handler(self, message_type: str, description: str = "") -> Callable:
         """
-        装饰器方式注册永久消息处理器
+        Register permanent message handler using decorator
         
         Args:
-            message_type: 消息类型
-            description: 处理器描述
+            message_type: Message type
+            description: Handler description
             
         Returns:
-            Callable: 装饰器函数
+            Callable: Decorator function
         """
         def decorator(handler_func: Callable) -> Callable:
             self._register_permanent_handler(message_type, handler_func, description)
@@ -87,24 +87,24 @@ class WebSocketMessageManager:
     def register_temporary_handler(self, message_type: str, handler_func: Callable, 
                                  description: str = "") -> str:
         """
-        注册临时消息处理器
+        Register temporary message handler
         
         Args:
-            message_type: 消息类型
-            handler_func: 处理函数
-            description: 处理器描述
+            message_type: Message type
+            handler_func: Handler function
+            description: Handler description
             
         Returns:
-            str: 处理器ID，用于取消注册
+            str: Handler ID, used for unregistering
         """
         handler_id = str(uuid.uuid4())
         
         async def wrapper(message: Dict[str, Any]):
-            """包装器，处理临时处理器"""
+            """Wrapper for handling temporary handlers"""
             try:
                 await handler_func(message)
             except Exception as e:
-                self.logger.error(f"临时处理器执行失败 (ID: {handler_id}): {e}")
+                self.logger.error(f"Temporary handler execution failed (ID: {handler_id}): {e}")
         
         handler = MessageHandler(
             handler_id=handler_id,
@@ -121,50 +121,50 @@ class WebSocketMessageManager:
                 self._handlers[message_type].append(handler)
                 self._temporary_handler_ids.add(handler_id)
         
-        # 异步注册
+        # Asynchronous registration
         asyncio.create_task(register())
         
-        self.logger.info(f"注册临时消息处理器 (ID: {handler_id}) - 类型: {message_type}")
+        self.logger.info(f"Registered temporary message handler (ID: {handler_id}) - Type: {message_type}")
         return handler_id
     
     def unregister_temporary_handler(self, handler_id: str) -> bool:
         """
-        取消注册临时消息处理器
+        Unregister temporary message handler
         
         Args:
-            handler_id: 处理器ID
+            handler_id: Handler ID
             
         Returns:
-            bool: 是否成功取消注册
+            bool: Whether unregistration was successful
         """
         async def unregister():
             async with self._lock:
                 if handler_id not in self._temporary_handler_ids:
                     return False
                 
-                # 从所有消息类型中移除该处理器
+                # Remove this handler from all message types
                 for message_type in list(self._handlers.keys()):
                     self._handlers[message_type] = [
                         h for h in self._handlers[message_type] 
                         if h.handler_id != handler_id
                     ]
                     
-                    # 如果该类型没有处理器了，移除类型
+                    # If this type has no handlers left, remove the type
                     if not self._handlers[message_type]:
                         del self._handlers[message_type]
                 
                 self._temporary_handler_ids.discard(handler_id)
                 return True
         
-        # 异步取消注册
+        # Asynchronous unregistration
         asyncio.create_task(unregister())
         
-        self.logger.info(f"取消注册临时消息处理器 (ID: {handler_id})")
+        self.logger.info(f"Unregistered temporary message handler (ID: {handler_id})")
         return True
     
     def _register_permanent_handler(self, message_type: str, handler_func: Callable, 
                                   description: str = ""):
-        """注册永久消息处理器"""
+        """Register permanent message handler"""
         handler_id = f"permanent_{message_type}_{id(handler_func)}"
         
         handler = MessageHandler(
@@ -180,24 +180,24 @@ class WebSocketMessageManager:
                 if message_type not in self._handlers:
                     self._handlers[message_type] = []
                 self._handlers[message_type].append(handler)
-                self.logger.info(f"注册永久消息处理器 - 类型: {message_type}, 描述: {description}, 共{len(self._handlers.values())} 个处理器")
+                self.logger.info(f"Registered permanent message handler - Type: {message_type}, Description: {description}, Total handlers: {len(self._handlers.values())}")
         
-        # 异步注册
+        # Asynchronous registration
         asyncio.create_task(register())
 
     
     async def handle_message(self, message: str) -> bool:
         """
-        处理WebSocket消息
+        Process WebSocket message
         
         Args:
-            message: 原始消息字符串
+            message: Raw message string
             
         Returns:
-            bool: 是否成功处理
+            bool: Whether processing was successful
         """
         try:
-            # 解析JSON消息
+            # Parse JSON message
             data = message
             if isinstance(message, str):
                 data = json.loads(message)
@@ -205,17 +205,17 @@ class WebSocketMessageManager:
             message_type = data.get('type', '')
             
             if not message_type:
-                self.logger.warning("收到无类型消息，忽略")
+                self.logger.warning("Received message without type, ignoring")
                 return False
             
-            # 查找对应的处理器
+            # Find corresponding handlers
             handlers = self._get_handlers_for_type(message_type)
             
             if not handlers:
-                self.logger.debug(f"未找到消息类型 '{message_type}' 的处理器")
+                self.logger.debug(f"No handler found for message type '{message_type}'")
                 return False
             
-            # 异步执行所有处理器
+            # Asynchronously execute all handlers
             tasks = []
             for handler in handlers:
                 task = asyncio.create_task(
@@ -223,51 +223,51 @@ class WebSocketMessageManager:
                 )
                 tasks.append(task)
             
-            # 等待所有处理器完成
+            # Wait for all handlers to complete
             await asyncio.gather(*tasks, return_exceptions=True)
             
-            self.logger.debug(f"成功处理消息类型: {message_type}, 处理器数量: {len(handlers)}")
+            self.logger.debug(f"Successfully processed message type: {message_type}, handler count: {len(handlers)}")
             return True
             
         except json.JSONDecodeError:
-            self.logger.error("消息JSON解析失败")
+            self.logger.error("Message JSON parsing failed")
             return False
         except Exception as e:
-            self.logger.error(f"处理消息时发生错误: {e}")
+            self.logger.error(f"Error occurred while processing message: {e}")
             return False
     
     def _get_handlers_for_type(self, message_type: str) -> List[MessageHandler]:
-        """获取指定消息类型的所有处理器"""
+        """Get all handlers for specified message type"""
         handlers = []
         
-        # 获取精确匹配的处理器
+        # Get exact match handlers
         if message_type in self._handlers:
             handlers.extend(self._handlers[message_type])
         
-        # 获取通配符处理器（如果有实现的话）
+        # Get wildcard handlers (if implemented)
         if "*" in self._handlers:
             handlers.extend(self._handlers["*"])
         
         return handlers
     
     async def _execute_handler(self, handler: MessageHandler, message: Dict[str, Any]):
-        """执行单个处理器"""
+        """Execute single handler"""
         try:
             await handler.handler_func(message)
             
-            # 如果是临时处理器且执行成功，自动取消注册（可选）
+            # If it's a temporary handler and execution successful, automatically unregister (optional)
             # if handler.is_temporary:
             #     self.unregister_temporary_handler(handler.handler_id)
                 
         except Exception as e:
-            self.logger.error(f"处理器执行失败 (ID: {handler.handler_id}): {e}")
+            self.logger.error(f"Handler execution failed (ID: {handler.handler_id}): {e}")
     
     def get_registered_types(self) -> List[str]:
-        """获取已注册的消息类型列表"""
+        """Get list of registered message types"""
         return list(self._handlers.keys())
     
     def get_handler_count(self, message_type: str = None) -> int:
-        """获取处理器数量"""
+        """Get handler count"""
         if message_type:
             return len(self._handlers.get(message_type, []))
         else:
@@ -277,37 +277,37 @@ class WebSocketMessageManager:
             return total
     
     def clear_temporary_handlers(self):
-        """清除所有临时处理器"""
+        """Clear all temporary handlers"""
         async def clear():
             async with self._lock:
-                # 只保留永久处理器
+                # Only keep permanent handlers
                 for message_type in list(self._handlers.keys()):
                     self._handlers[message_type] = [
                         h for h in self._handlers[message_type] 
                         if not h.is_temporary
                     ]
                     
-                    # 如果该类型没有处理器了，移除类型
+                    # If this type has no handlers left, remove the type
                     if not self._handlers[message_type]:
                         del self._handlers[message_type]
                 
                 self._temporary_handler_ids.clear()
         
         asyncio.create_task(clear())
-        self.logger.info("已清除所有临时消息处理器")
+        self.logger.info("Cleared all temporary message handlers")
 
 
-# 创建全局单例实例
+# Create global singleton instance
 _message_manager_instance = None
 
 
 def get_message_manager() -> WebSocketMessageManager:
-    """获取消息管理器实例（单例模式）"""
+    """Get message manager instance (singleton pattern)"""
     global _message_manager_instance
     if _message_manager_instance is None:
         _message_manager_instance = WebSocketMessageManager()
     return _message_manager_instance
 
 
-# 提供便捷的全局实例引用
+# Provide convenient global instance reference
 message_manager = get_message_manager()

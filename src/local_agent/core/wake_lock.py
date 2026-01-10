@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-电脑唤醒保持模块
-使用Windows原生API实现高可靠性的系统唤醒保持
+Computer wake lock module
+Uses Windows native API to implement highly reliable system wake keeping
 """
 
 import ctypes
@@ -14,59 +14,59 @@ from ..logger import get_logger
 
 class SystemWakeLock:
     """
-    系统唤醒锁类
-    使用Windows原生API保持电脑唤醒状态
+    System wake lock class
+    Uses Windows native API to keep computer awake
     """
     
     def __init__(self):
         self.logger = get_logger(__name__)
         
-        # Windows API常量定义
+        # Windows API constant definitions
         self.ES_CONTINUOUS = 0x80000000
         self.ES_SYSTEM_REQUIRED = 0x00000001
         self.ES_DISPLAY_REQUIRED = 0x00000002
         self.ES_AWAYMODE_REQUIRED = 0x00000040
         
-        # 状态管理
+        # Status management
         self._is_active = False
         self._heartbeat_thread: Optional[threading.Thread] = None
         self._stop_heartbeat = threading.Event()
         
-        # 配置参数
-        self.heartbeat_interval = 300  # 5分钟心跳检测
+        # Configuration parameters
+        self.heartbeat_interval = 300  # 5 minute heartbeat detection
         self.max_retry_count = 3
         
-        self.logger.info("系统唤醒锁初始化完成")
+        self.logger.info("System wake lock initialized")
     
     def _call_windows_api(self, flags: int) -> bool:
         """
-        调用Windows API设置执行状态
+        Call Windows API to set execution state
         
         Args:
-            flags: 执行状态标志
+            flags: Execution state flags
             
         Returns:
-            bool: 调用是否成功
+            bool: Whether the call was successful
         """
         try:
             result = ctypes.windll.kernel32.SetThreadExecutionState(flags)
             return result != 0
         except Exception as e:
-            self.logger.error(f"调用Windows API失败: {e}")
+            self.logger.error(f"Call Windows API failed: {e}")
             return False
     
     def keep_awake(self, display_on: bool = True, away_mode: bool = False) -> bool:
         """
-        保持系统唤醒状态
+        Keep system in wake state
         
         Args:
-            display_on: 是否保持显示器亮起
-            away_mode: 是否启用离开模式（适用于媒体播放等场景）
+            display_on: Whether to keep display on
+            away_mode: Whether to enable away mode (suitable for media playback scenarios)
             
         Returns:
-            bool: 设置是否成功
+            bool: Whether setting was successful
         """
-        # 构建标志位
+        # Build flags
         flags = self.ES_CONTINUOUS | self.ES_SYSTEM_REQUIRED
         
         if display_on:
@@ -75,55 +75,55 @@ class SystemWakeLock:
         if away_mode:
             flags |= self.ES_AWAYMODE_REQUIRED
         
-        # 重试机制
+        # Retry mechanism
         for attempt in range(self.max_retry_count):
             if self._call_windows_api(flags):
                 self._is_active = True
-                self.logger.info(f"系统唤醒状态设置成功 (显示{'开启' if display_on else '关闭'})")
+                self.logger.info(f"System wake state set successfully (display {'on' if display_on else 'off'})")
                 
-                # 启动心跳检测
+                # Start heartbeat detection
                 self._start_heartbeat()
                 return True
             
-            self.logger.warning(f"第{attempt + 1}次设置唤醒状态失败，{'重试中...' if attempt < self.max_retry_count - 1 else '放弃重试'}")
+            self.logger.warning(f"Attempt {attempt + 1} to set wake state failed, {'retrying...' if attempt < self.max_retry_count - 1 else 'giving up'}")
             time.sleep(1)
         
-        self.logger.error("设置系统唤醒状态失败")
+        self.logger.error("Set system wake state failed")
         return False
     
     def release(self) -> bool:
         """
-        释放唤醒状态，允许系统正常休眠
+        Release wake state, allow system to sleep normally
         
         Returns:
-            bool: 释放是否成功
+            bool: Whether release was successful
         """
-        # 如果已经处于非激活状态，直接返回成功
+        # If already in inactive status, return success directly
         if not self._is_active:
-            self.logger.info("唤醒锁已处于释放状态")
+            self.logger.info("Wake lock already in released state")
             return True
         
-        # 停止心跳检测
+        # Stop heartbeat detection
         self._stop_heartbeat.set()
         if self._heartbeat_thread and self._heartbeat_thread.is_alive():
             self._heartbeat_thread.join(timeout=5)
         
-        # 释放唤醒状态 - 使用ES_CONTINUOUS重置执行状态
-        # 注意：Windows API要求使用ES_CONTINUOUS来清除之前的所有状态
+        # Release wake status - use ES_CONTINUOUS to reset execute status
+        # Note: Windows API requires ES_CONTINUOUS to clear all previous status
         success = self._call_windows_api(self.ES_CONTINUOUS)
         
-        # 无论API调用是否成功，我们都将内部状态设置为非激活
+        # Regardless of whether API call was successful, we set internal status to inactive
         self._is_active = False
         
         if success:
-            self.logger.info("系统唤醒状态已释放")
+            self.logger.info("System wake state has been released")
         else:
-            self.logger.warning("释放系统唤醒状态失败，但内部状态已重置")
+            self.logger.warning("Release system wake state failed, but internal state has been reset")
         
         return success
     
     def _start_heartbeat(self):
-        """启动心跳检测线程"""
+        """Start heartbeat detection thread"""
         if self._heartbeat_thread and self._heartbeat_thread.is_alive():
             return
         
@@ -134,52 +134,52 @@ class SystemWakeLock:
             daemon=True
         )
         self._heartbeat_thread.start()
-        self.logger.info("心跳检测线程已启动")
+        self.logger.info("Heartbeat detection thread started")
     
     def _heartbeat_worker(self):
-        """心跳检测工作线程"""
+        """Heartbeat detection worker thread"""
         while not self._stop_heartbeat.is_set():
             try:
-                # 检查唤醒状态是否仍然有效
+                # Check if wake status is still valid
                 if self._is_active:
-                    # 重新设置唤醒状态（心跳）
+                    # Reset wake status (heartbeat)
                     flags = self.ES_CONTINUOUS | self.ES_SYSTEM_REQUIRED
                     if not self._call_windows_api(flags):
-                        self.logger.warning("心跳检测发现唤醒状态失效，尝试重新设置")
-                        # 尝试重新激活
+                        self.logger.warning("Heartbeat detection found wake state invalid, attempting to reset")
+                        # Try to reactivate
                         self.keep_awake(display_on=True)
                 
-                # 等待下一次心跳
+                # Wait for next heartbeat
                 self._stop_heartbeat.wait(self.heartbeat_interval)
                 
             except Exception as e:
-                self.logger.error(f"心跳检测线程异常: {e}")
+                self.logger.error(f"Heartbeat detection thread exception: {e}")
                 break
     
     def is_active(self) -> bool:
-        """获取当前唤醒状态"""
+        """Get current wake state"""
         return self._is_active
     
     def __enter__(self):
-        """上下文管理器入口"""
+        """Context manager entry"""
         self.keep_awake()
         return self
     
     def __exit__(self, exc_type, exc_val, exc_tb):
-        """上下文管理器退出"""
+        """Context manager exit"""
         self.release()
 
 
-# 全局唤醒锁实例
+# Global wake lock instance
 _wake_lock: Optional[SystemWakeLock] = None
 
 
 def get_wake_lock() -> SystemWakeLock:
     """
-    获取全局唤醒锁实例（单例模式）
+    Get global wake lock instance (singleton pattern)
     
     Returns:
-        SystemWakeLock: 唤醒锁实例
+        SystemWakeLock: Wake lock instance
     """
     global _wake_lock
     if _wake_lock is None:
@@ -189,33 +189,33 @@ def get_wake_lock() -> SystemWakeLock:
 
 def keep_system_awake(display_on: bool = True, away_mode: bool = False) -> bool:
     """
-    便捷函数：保持系统唤醒
+    Convenience function: Keep system awake
     
     Args:
-        display_on: 是否保持显示器亮起
-        away_mode: 是否启用离开模式
+        display_on: Whether to keep display on
+        away_mode: Whether to enable away mode
         
     Returns:
-        bool: 设置是否成功
+        bool: Whether setting was successful
     """
     return get_wake_lock().keep_awake(display_on, away_mode)
 
 
 def release_system_awake() -> bool:
     """
-    便捷函数：释放系统唤醒
+    Convenience function: Release system wake
     
     Returns:
-        bool: 释放是否成功
+        bool: Whether release was successful
     """
     return get_wake_lock().release()
 
 
 def is_system_awake() -> bool:
     """
-    便捷函数：检查系统是否处于唤醒状态
+    Convenience function: Check if system is in wake state
     
     Returns:
-        bool: 是否处于唤醒状态
+        bool: Whether system is in wake state
     """
     return get_wake_lock().is_active()

@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-项目全局缓存模块
-专为跨模块数据共享设计，简单易用
+Project global cache module
+Designed for cross-module data sharing, simple and easy to use
 
-使用示例：
-1. 在websocket模块中存储数据：
+Usage examples:
+1. Store data in websocket module:
    from src.local_agent.core.global_cache import cache
    cache.set("websocket:user:123", {"status": "connected", "data": {...}})
 
-2. 在api模块中读取数据：
+2. Read data in api module:
    from src.local_agent.core.global_cache import cache
    user_data = cache.get("websocket:user:123")
 
-3. 在core模块中更新数据：
+3. Update data in core module:
    from src.local_agent.core.global_cache import cache
    cache.update("websocket:user:123", {"last_activity": time.time()})
 """
@@ -26,50 +26,50 @@ from .constants import DMR_INFO_CACHE_KEY, HARDWARE_INFO_UPLOAD_TASK_ID, AGENT_S
 
 class GlobalCache:
     """
-    全局缓存类 - 专为跨模块数据共享设计
+    Global cache class - Designed for cross-module data sharing
     """
     
     def __init__(self, max_size: int = 1000, default_ttl: int = 3600):
         """
-        初始化全局缓存
+        Initialize global cache
         
         Args:
-            max_size: 最大缓存项数量，默认1000
-            default_ttl: 默认过期时间（秒），默认1小时
+            max_size: Maximum number of cache items, default 1000
+            default_ttl: Default expiration time (seconds), default 1 hour
         """
         self._data: Dict[str, Dict[str, Any]] = {}
         self._max_size = max_size
         self._default_ttl = default_ttl
         self._lock = threading.RLock()
-        self._access_order = OrderedDict()  # 用于LRU淘汰
+        self._access_order = OrderedDict()  # Used for LRU eviction
     
     def set(self, key: str, value: Any, ttl: Optional[int] = None) -> bool:
         """
-        设置缓存值
+        Set cache value
         
         Args:
-            key: 缓存键
-            value: 缓存值
-            ttl: 过期时间（秒），None表示永久有效
+            key: Cache key
+            value: Cache value
+            ttl: Expiration time (seconds), None means permanent validity
             
         Returns:
-            bool: 是否设置成功
+            bool: Whether setting was successful
         """
         with self._lock:
-            # 清理过期项
+            # [Clean expired items]
             self._clean_expired()
             
-            # 检查容量，必要时淘汰最久未使用的项
+            # Check [capacity], [evict least recently used item if necessary]
             if len(self._data) >= self._max_size and key not in self._data:
                 self._evict_oldest()
             
-            # 设置缓存项
+            # Setup cache [item]
             if ttl is not None:
-                # 设置了TTL，计算过期时间
+                # Setup [TTL], [calculate expiration] time
                 expires_at = time.time() + ttl
             else:
-                # 未设置TTL，永久有效
-                expires_at = float('inf')  # 无限大，表示永不过期
+                # [Not] setup TTL, [permanent] valid
+                expires_at = float('inf')  # Infinity, means never expires
             
             self._data[key] = {
                 'value': value,
@@ -77,7 +77,7 @@ class GlobalCache:
                 'created_at': time.time()
             }
             
-            # 更新访问顺序
+            # Update [access order]
             if key in self._access_order:
                 del self._access_order[key]
             self._access_order[key] = None
@@ -86,14 +86,14 @@ class GlobalCache:
     
     def get(self, key: str, default: Any = None) -> Any:
         """
-        获取缓存值
+        Get cache value
         
         Args:
-            key: 缓存键
-            default: 默认值（如果键不存在或已过期）
+            key: Cache key
+            default: Default value (if key does not exist or has expired)
             
         Returns:
-            Any: 缓存值或默认值
+            Any: Cache value or default value
         """
         with self._lock:
             if key not in self._data:
@@ -101,14 +101,14 @@ class GlobalCache:
             
             item = self._data[key]
             
-            # 检查是否过期（永久有效的项expires_at为inf，不会过期）
+            # Check [if expired] ([permanent] valid [items] expires_at [is] inf, [will not expire])
             if time.time() > item['expires_at']:
                 del self._data[key]
                 if key in self._access_order:
                     del self._access_order[key]
                 return default
             
-            # 更新访问时间
+            # Update [access] time
             if key in self._access_order:
                 del self._access_order[key]
             self._access_order[key] = None
@@ -117,26 +117,26 @@ class GlobalCache:
     
     def has(self, key: str) -> bool:
         """
-        检查键是否存在且未过期
+        Check if key exists and has not expired
         
         Args:
-            key: 缓存键
+            key: Cache key
             
         Returns:
-            bool: 键是否存在且有效
+            bool: Whether key exists and is valid
         """
         with self._lock:
             return self.get(key) is not None
     
     def delete(self, key: str) -> bool:
         """
-        删除缓存项
+        Delete cache item
         
         Args:
-            key: 缓存键
+            key: Cache key
             
         Returns:
-            bool: 是否删除成功
+            bool: Whether deletion was successful
         """
         with self._lock:
             if key in self._data:
@@ -148,24 +148,24 @@ class GlobalCache:
     
     def update(self, key: str, updates: Dict[str, Any]) -> bool:
         """
-        更新缓存项的部分字段（仅适用于字典类型的值）
+        Update partial fields of cache item (only applicable to dictionary type values)
         
         Args:
-            key: 缓存键
-            updates: 要更新的字段
+            key: Cache key
+            updates: Fields to update
             
         Returns:
-            bool: 是否更新成功
+            bool: Whether update was successful
         """
         with self._lock:
             current_value = self.get(key)
             if current_value is None or not isinstance(current_value, dict):
                 return False
             
-            # 更新字段
+            # Update [fields]
             current_value.update(updates)
             
-            # 重新设置缓存（保持原有TTL）
+            # [Re]setup cache ([maintain original] TTL)
             item = self._data[key]
             remaining_ttl = item['expires_at'] - time.time()
             if remaining_ttl > 0:
@@ -175,10 +175,10 @@ class GlobalCache:
     
     def keys(self) -> list:
         """
-        获取所有有效缓存键
+        Get all valid cache keys
         
         Returns:
-            list: 缓存键列表
+            list: List of cache keys
         """
         with self._lock:
             self._clean_expired()
@@ -186,10 +186,10 @@ class GlobalCache:
     
     def size(self) -> int:
         """
-        获取当前缓存项数量
+        Get current number of cache items
         
         Returns:
-            int: 缓存项数量
+            int: Number of cache items
         """
         with self._lock:
             self._clean_expired()
@@ -197,7 +197,7 @@ class GlobalCache:
     
     def clear(self) -> None:
         """
-        清空所有缓存
+        Clear all cache
         """
         with self._lock:
             self._data.clear()
@@ -205,13 +205,13 @@ class GlobalCache:
     
     def get_ttl(self, key: str) -> Optional[float]:
         """
-        获取键的剩余过期时间
+        Get remaining expiration time for key
         
         Args:
-            key: 缓存键
+            key: Cache key
             
         Returns:
-            Optional[float]: 剩余秒数，永久有效返回float('inf')，键不存在返回None
+            Optional[float]: Remaining seconds, returns float('inf') for permanent validity, returns None if key does not exist
         """
         with self._lock:
             if key not in self._data:
@@ -219,7 +219,7 @@ class GlobalCache:
             
             item = self._data[key]
             
-            # 永久有效的项
+            # [Permanent] valid [items]
             if item['expires_at'] == float('inf'):
                 return float('inf')
             
@@ -228,13 +228,13 @@ class GlobalCache:
     
     def _clean_expired(self) -> None:
         """
-        清理所有过期项（永久有效的项不会被清理）
+        Clean all expired items (permanently valid items will not be cleaned)
         """
         current_time = time.time()
         expired_keys = []
         
         for key, item in self._data.items():
-            # 永久有效的项expires_at为inf，不会过期
+            # [Permanent] valid [items] expires_at [is] inf, [will not expire]
             if item['expires_at'] != float('inf') and current_time > item['expires_at']:
                 expired_keys.append(key)
         
@@ -245,7 +245,7 @@ class GlobalCache:
     
     def _evict_oldest(self) -> None:
         """
-        淘汰最久未使用的项
+        Evict least recently used item
         """
         if self._access_order:
             oldest_key, _ = self._access_order.popitem(last=False)
@@ -253,17 +253,17 @@ class GlobalCache:
                 del self._data[oldest_key]
 
 
-# 创建全局缓存实例
+# Create global cache instance
 _cache_instance = None
 _cache_lock = threading.RLock()
 
 
 def get_cache() -> GlobalCache:
     """
-    获取全局缓存实例（单例模式）
+    Get global cache instance (singleton pattern)
     
     Returns:
-        GlobalCache: 全局缓存实例
+        GlobalCache: Global cache instance
     """
     global _cache_instance
     with _cache_lock:
@@ -272,76 +272,69 @@ def get_cache() -> GlobalCache:
         return _cache_instance
 
 
-# 提供便捷的全局实例
+# [Provide convenient] global instance
 cache = get_cache()
 
 
-# 便捷函数，可以直接导入使用
+# [Convenient] functions, [can be imported and used directly]
 def set_cache(key: str, value: Any, ttl: Optional[int] = None) -> bool:
-    """便捷函数：设置缓存值"""
+    """[Convenient] function: set cache [value]"""
     return cache.set(key, value, ttl)
 
-
 def get_cache_value(key: str, default: Any = None) -> Any:
-    """便捷函数：获取缓存值"""
+    """[Convenient] function: get cache [value]"""
     return cache.get(key, default)
 
-
 def has_cache(key: str) -> bool:
-    """便捷函数：检查缓存是否存在"""
+    """[Convenient] function: check cache [if exists]"""
     return cache.has(key)
 
-
 def delete_cache(key: str) -> bool:
-    """便捷函数：删除缓存项"""
+    """[Convenient] function: delete cache [item]"""
     return cache.delete(key)
 
-
 def update_cache(key: str, updates: Dict[str, Any]) -> bool:
-    """便捷函数：更新缓存项"""
+    """[Convenient] function: update cache [item]"""
     return cache.update(key, updates)
 
-
 def clear_all_cache() -> None:
-    """便捷函数：清空所有缓存"""
+    """[Convenient] function: [clear all] cache"""
     cache.clear()
 
-
 def get_cache_keys() -> list:
-    """便捷函数：获取所有缓存键"""
+    """[Convenient] function: get [all] cache [keys]"""
     return cache.keys()
 
-
 def get_cache_size() -> int:
-    """便捷函数：获取缓存大小"""
+    """[Convenient] function: get cache [size]"""
     return cache.size()
 
 def get_dmr_info() -> Dict[str, Any]:
-    """便捷函数：获取 dmr 硬件信息"""
+    """[Convenient] function: get dmr [hardware] info"""
     return cache.get(DMR_INFO_CACHE_KEY, {})
 
 def set_dmr_info(info: Dict[str, Any]) -> None:
-    """便捷函数：设置 dmr 硬件信息"""
+    """[Convenient] function: set dmr [hardware] info"""
     cache.set(DMR_INFO_CACHE_KEY, info)
 
 def get_dmr_upload_task_id() -> Optional[str]:
-    """便捷函数：获取硬件信息上报定时任务id"""
+    """[Convenient] function: get [hardware] info [upload scheduled task] id"""
     return cache.get(HARDWARE_INFO_UPLOAD_TASK_ID, None)
 
 def set_dmr_upload_task_id(task_id: str) -> None:
-    """便捷函数：设置硬件信息上报定时任务id"""
+    """[Convenient] function: set [hardware] info [upload scheduled task] id"""
     cache.set(HARDWARE_INFO_UPLOAD_TASK_ID, task_id)
 
 def get_agent_status_by_key(key: str) -> bool:
-    """便捷函数：获取 agent 状态"""
+    """[Convenient] function: get agent [status]"""
     return cache.get(AGENT_STATUS_CACHE_KEY, {"test": False, "vnc": False, "sut": False, "use": False, "pre": False}).get(key, False)
 
 def get_agent_status() -> Dict[str, bool]:
-    """便捷函数：获取 agent 状态"""
+    """[Convenient] function: get agent [status]"""
     return cache.get(AGENT_STATUS_CACHE_KEY, {"test": False, "vnc": False, "sut": False, "use": False, "pre": False})
 
 def set_agent_status(test: bool = None, vnc: bool = None, sut: bool = None, use: bool = None, pre: bool = None) -> None:
-    """便捷函数：设置 agent 状态"""
+    """[Convenient] function: set agent [status]"""
     status = get_agent_status()
     if test is not None:
         status["test"] = test
@@ -356,11 +349,11 @@ def set_agent_status(test: bool = None, vnc: bool = None, sut: bool = None, use:
     cache.set(AGENT_STATUS_CACHE_KEY, status)
 
 def get_ek_test_info() -> Dict[str, Any]:
-    """便捷函数：获取 ek 测试信息"""
+    """[Convenient] function: get ek [test] info"""
     return cache.get(EK_TEST_INFO_CACHE_KEY, {})
 
 def set_ek_test_info(info: Dict[str, Any]) -> None:
-    """便捷函数：设置 ek 测试信息"""
+    """[Convenient] function: set ek [test] info"""
     cache.set(EK_TEST_INFO_CACHE_KEY, info)
 
 

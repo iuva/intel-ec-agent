@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-API路由定义
-定义所有FastAPI接口路由
+API route definitions
+Define all FastAPI interface routes
 """
 
 from fastapi import APIRouter, Body
@@ -25,68 +25,68 @@ logger = get_logger(__name__)
 config = get_config()
 
 class EKResultEvent(BaseModel):
-    """EK结果汇报请求模型"""
+    """EK result reporting request model"""
     type: str
     status_code: str
     details: Dict[str, Any]
 
 class EKResultRequest(BaseModel):
-    """EK结果汇报请求模型"""
+    """EK result reporting request model"""
     tool: str
     timestamp: str
     session_id: str
     event: EKResultEvent
 
 class DMRResultDetails(BaseModel):
-    """EK结果汇报请求模型"""
+    """EK result reporting request model"""
     mode: str
     output_file: str
     output_data: Dict[str, Any]
 
 class DMRResultEvent(BaseModel):
-    """EK结果汇报请求模型"""
+    """EK result reporting request model"""
     type: str
     status_code: str
     details: DMRResultDetails
 
 class DMRResultPayload(BaseModel):
-    """EK结果汇报请求模型"""
+    """EK result reporting request model"""
     tool: str
     timestamp: str
     event: DMRResultEvent
 
 class DMRResultRequest(BaseModel):
-    """EK结果汇报请求模型"""
+    """EK result reporting request model"""
     Payload: DMRResultPayload
 
 class CommonResponse(BaseModel):
-    """通用响应模型"""
-    code: int  # 0-成功, 1-失败
+    """Common response model"""
+    code: int  # 0-Success, 1-Failure
     msg: str
 
 
 @router.post("/ek/start/result", response_model=CommonResponse)
 async def ek_start_result(request: EKResultRequest):
     """
-    EK启动结果汇报接口
+    EK start result reporting interface
     
     
     """
     try:
         
-        logger.info(f"启动结果: {request}")
+        logger.info(f"Start result: {request}")
 
         event = request.event
 
         details = event.details
 
-        # 启动结果上报
+        # Start result reporting
         case_res = http_post(url="/host/agent/testcase/report", data={
             "tc_id": details.get('tc_id', ''),
             # "state": 1,
             "state": 1 if event.status_code == '0' else 3,
             "result_msg": "{\"code\":\"200\",\"msg\":\"ok\"}",
-            "log_url": "无",
+            "log_url": "None",
         })
 
         if event.status_code == '1':
@@ -97,18 +97,18 @@ async def ek_start_result(request: EKResultRequest):
 
         # due_time = TimeUtils.add_minutes_to_current(details.get('estimated_duration', 0))
 
-        # 上报测试用例预期结束时间
+        # Report test case expected end time
         res = http_put(url="/host/agent/testcase/due-time", data={
             "tc_id": details.get('tc_id', ''),
             "due_time": int(details.get('estimated_duration', 0))
         })
 
-        logger.debug(f"启动结果上报响应: {res}")
+        logger.debug(f"Start result report response: {res}")
         
         res_data = res.get('data', {})
         res_code = res_data.get('code', 0)
         if res_code != 200:
-            logger.error(f"启动结果上报失败: {res}")
+            logger.error(f"Start result report failed: {res}")
 
         set_agent_status(test=True)
         return CommonResponse(
@@ -117,53 +117,53 @@ async def ek_start_result(request: EKResultRequest):
         )
 
     except Exception as e:
-        logger.error(f"处理启动结果汇报时发生错误: {str(e)}")
+        logger.error(f"Error occurred while processing start result report: {str(e)}")
         return CommonResponse(
             code=1,
-            msg=f"处理失败: {str(e)}"
+            msg=f"Processing failed: {str(e)}"
         )
 
 
 @router.post("/ek/test/result", response_model=CommonResponse)
 async def report_tool_result(request: EKResultRequest):
     """
-    EK结果汇报接口
+    EK result reporting interface
     
-    此接口等待EK调用，调用后将整理好的信息上报给服务端
+    This interface waits for EK calls, and after being called, it reports the organized information to the server
     """
     try:
         
-        logger.info(f"ek 结果详情: {request}")
+        logger.info(f"EK result details: {request}")
 
         event = request.event
 
         details = event.details
 
-        # 测试结果上报
+        # Test result reporting
         res = http_post(url="/host/agent/testcase/report", data={
             "tc_id": details.get('tc_id', ''),
             "state": 2 if event.status_code == '0' else 3,
             "result_msg": "{\"code\":\"200\",\"msg\":\"ok\"}",
-            "log_url": "无",
+            "log_url": "None",
         })
 
-        logger.debug(f"测试结果上报响应: {res}")
+        logger.debug(f"Test result report response: {res}")
         
         res_data = res.get('data', {})
         res_code = res_data.get('code', 0)
         if res_code != 200:
-            logger.error(f"测试结果上报失败: {res}")
+            logger.error(f"Test result report failed: {res}")
 
             return CommonResponse(
                 code=res_data.get('code'),
                 msg=res_data.get('message')
             )
         
-        # 上报硬件信息
+        # Report hardware info
         dmr_res = upload_dmr()
 
         if dmr_res:
-            # 记录测试状态
+            # Record test status
             set_agent_status(test=False)
 
         return CommonResponse(
@@ -172,10 +172,10 @@ async def report_tool_result(request: EKResultRequest):
         )
 
     except Exception as e:
-        logger.error(f"处理结果汇报时发生错误: {str(e)}")
+        logger.error(f"Error occurred while processing result report: {str(e)}")
         return CommonResponse(
             code=1,
-            msg=f"处理失败: {str(e)}"
+            msg=f"Processing failed: {str(e)}"
         )
 
 
@@ -183,18 +183,18 @@ async def report_tool_result(request: EKResultRequest):
 @router.post("/dmr/info/result", response_model=CommonResponse)
 async def report_dmr_result(request: DMRResultPayload):
     """
-    硬件信息结果汇报接口
+    Hardware info result reporting interface
     
-    此接口等待EK调用，调用后将整理好的信息上报给服务端
+    This interface waits for EK calls, and after being called, it reports the organized information to the server
     """
     try:
 
-        # 记录详细的EK结果信息
-        logger.info(f"dmr结果详情: {request}")
+        # Record detailed EK result info
+        logger.info(f"DMR result details: {request}")
 
-        # 是否成功
+        # Whether successful
         if request.event.status_code == "0":
-            # 清除硬件信息获取定时任务
+            # Clear hardware info retrieval timed task
             task_id = cache.get(HARDWARE_INFO_TASK_ID)
             if task_id:
                 clear_timeout(task_id)
@@ -207,12 +207,12 @@ async def report_dmr_result(request: DMRResultPayload):
 
         set_dmr_info(body)
 
-        # 如果测试中则不上报，调用逻辑在测试结束上报
+        # If in test then do not report, call logic is in test end reporting
         agent_status = get_agent_status_by_key('test')
-        logger.info(f"测试状态: {agent_status}{type(agent_status)}")
+        logger.info(f"Test status: {agent_status}{type(agent_status)}")
         if not agent_status:
-            # 上报硬件信息
-            logger.info("开始调用：upload_dmr")
+            # Report hardware info
+            logger.info("Starting call: upload_dmr")
             upload_dmr()
 
 
@@ -223,41 +223,41 @@ async def report_dmr_result(request: DMRResultPayload):
         
         
     except Exception as e:
-        logger.error(f"处理结果汇报时发生错误: {str(e)}")
+        logger.error(f"Error occurred while processing result report: {str(e)}")
         return CommonResponse(
             code=1,
-            msg=f"处理失败: {str(e)}"
+            msg=f"Processing failed: {str(e)}"
         )
 
 
 def upload_dmr():
-    """上报 dmr 硬件信息"""
-    logger.info("调用了：upload_dmr")
+    """Report DMR hardware info"""
+    logger.info("Called: upload_dmr")
     info = get_dmr_info()
-    logger.info(f"dmr 硬件信息上报: {info}")
+    logger.info(f"DMR hardware info report: {info}")
     if info:
         
-        # 清除硬件信息上报定时任务, 避免重复上报
+        # Clear hardware info reporting timed task to avoid duplicate reporting
         task_id = get_dmr_upload_task_id()
         if task_id:
             clear_timeout(task_id)
             set_dmr_upload_task_id("")
 
-        # 硬件信息上报
+        # Hardware info reporting
         res = http_post(url="/host/agent/hardware/report", data = info)
         
-        logger.info(f"硬件信息上报结果: {res}")
-
+        logger.info(f"Hardware info report result: {res}")
+        
         res_data = res.get('data', {})
         res_code = res_data.get('code', 0)
         if res_code != 200:
-            logger.error(f"硬件信息上报失败: {res}")
+            logger.error(f"Hardware info report failed: {res}")
 
-            # 定时 15分钟后再次上报
+            # Timed report again after 15 minutes
             tack_id = set_timeout(900, upload_dmr)
             set_dmr_upload_task_id(tack_id)
 
-            # 停止websocket服务
+            # Stop WebSocket service
             from ..utils.websocket_sync_utils import stop_websocket_sync
             stop_websocket_sync()
             
@@ -266,12 +266,12 @@ def upload_dmr():
         set_agent_status(sut=False)
         set_dmr_info(None)
         
-        # 启动WebSocket服务
+        # Start WebSocket service
         from ..utils.websocket_sync_utils import start_websocket_sync
         start_websocket_sync(True)
 
-        logger.info("硬件信息上报成功")
-        # 执行更新补偿
+        logger.info("Hardware info report successful")
+        # Execute update compensation
         update_app()
 
     return True

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-心跳管理器 - 实现高可靠性的心跳检测和自动恢复
-提供多层级心跳验证、网络状态检测和智能恢复策略
+Heartbeat Manager - Implements highly reliable heartbeat detection and automatic recovery
+Provides multi-level heartbeat verification, network status detection, and intelligent recovery strategies
 """
 
 import asyncio
@@ -16,80 +16,80 @@ from ..logger import get_logger
 
 
 class HeartbeatManager:
-    """心跳管理器类 - 实现顶尖心跳检测机制"""
+    """Heartbeat management class - Implements top-tier heartbeat detection mechanism"""
     
     def __init__(self):
         self.logger = get_logger(__name__)
         
-        # 配置管理
+        # Configurationmanagement
         from ..config import get_config
         self.config = get_config()
         
-        # 心跳配置
-        self.heartbeat_interval = 30  # 基础心跳间隔(秒)
-        self.heartbeat_timeout = 10   # 心跳超时时间(秒)
-        self.max_failures = 3         # 最大连续失败次数
+        # Heartbeat configuration
+        self.heartbeat_interval = 30  # Basic heartbeat interval (seconds)
+        self.heartbeat_timeout = 10   # Heartbeat timeout time (seconds)
+        self.max_failures = 3         # Maximum consecutive failure times
         
-        # 状态管理
+        # Statusmanagement
         self._is_running = False
         self._last_successful_heartbeat: Optional[datetime] = None
         self._consecutive_failures = 0
         self._recovery_in_progress = False
         
-        # 心跳历史记录
+        # Heartbeat history records
         self._heartbeat_history: List[Dict] = []
         self._max_history_size = 100
         
-        # 网络状态检测
-        self._network_status = True  # 默认网络正常
+        # Network status detection
+        self._network_status = True  # Default network normal
         self._last_network_check = datetime.now()
         
-        # 智能恢复策略
+        # Intelligent recovery strategies
         self._recovery_strategies = [
             self._recovery_strategy_quick_restart,
             self._recovery_strategy_delayed_restart,
             self._recovery_strategy_full_reset
         ]
         
-        self.logger.info("心跳管理器初始化完成")
+        self.logger.info("Heartbeat manager initialized")
     
     async def start(self) -> bool:
-        """启动心跳管理器"""
+        """Start heartbeat manager"""
         try:
-            self.logger.info("启动心跳管理器...")
+            self.logger.info("Starting heartbeat manager...")
             
             self._is_running = True
             
-            # 启动心跳任务
+            # Start heartbeat tasks
             asyncio.create_task(self._heartbeat_loop())
             asyncio.create_task(self._network_monitor_loop())
             asyncio.create_task(self._health_analysis_loop())
             
-            self.logger.info("心跳管理器启动成功")
+            self.logger.info("Heartbeat manager started successfully")
             return True
             
         except Exception as e:
-            self.logger.error(f"心跳管理器启动失败: {e}")
+            self.logger.error(f"Heartbeat manager startup failed: {e}")
             return False
     
     async def stop(self) -> bool:
-        """停止心跳管理器"""
+        """Stop heartbeat manager"""
         try:
-            self.logger.info("停止心跳管理器...")
+            self.logger.info("Stopping heartbeat manager...")
             self._is_running = False
-            self.logger.info("心跳管理器已停止")
+            self.logger.info("Heartbeat manager has stopped")
             return True
             
         except Exception as e:
-            self.logger.error(f"停止心跳管理器失败: {e}")
+            self.logger.error(f"Stop heartbeat manager failed: {e}")
             return False
     
     async def send_heartbeat(self) -> bool:
-        """发送心跳信号"""
+        """Send heartbeat signal"""
         try:
             start_time = time.time()
             
-            # 多层级心跳验证
+            # Multi-level heartbeat validation
             heartbeat_results = await asyncio.gather(
                 self._verify_local_health(),
                 self._verify_api_health(),
@@ -97,14 +97,14 @@ class HeartbeatManager:
                 return_exceptions=True
             )
             
-            # 分析心跳结果
+            # Analyze heartbeat results
             success = await self._analyze_heartbeat_results(heartbeat_results)
             
-            # 记录心跳历史
+            # Record heartbeat history
             heartbeat_record = {
                 'timestamp': datetime.now(),
                 'success': success,
-                'response_time': (time.time() - start_time) * 1000,  # 毫秒
+                'response_time': (time.time() - start_time) * 1000,  # milliseconds
                 'details': {
                     'local': isinstance(heartbeat_results[0], bool) and heartbeat_results[0],
                     'api': isinstance(heartbeat_results[1], bool) and heartbeat_results[1],
@@ -117,184 +117,184 @@ class HeartbeatManager:
             if success:
                 self._last_successful_heartbeat = datetime.now()
                 self._consecutive_failures = 0
-                self.logger.debug("心跳发送成功")
+                self.logger.debug("Heartbeat sent successfully")
             else:
                 self._consecutive_failures += 1
-                self.logger.warning(f"心跳发送失败，连续失败次数: {self._consecutive_failures}")
+                self.logger.warning(f"Heartbeat send failed, consecutive failures: {self._consecutive_failures}")
                 
-                # 触发恢复机制
+                # Trigger recovery mechanism
                 if self._consecutive_failures >= self.max_failures:
                     await self._trigger_recovery()
             
             return success
             
         except Exception as e:
-            self.logger.error(f"发送心跳异常: {e}")
+            self.logger.error(f"Send heartbeat exception: {e}")
             self._consecutive_failures += 1
             return False
     
     async def _heartbeat_loop(self):
-        """心跳循环"""
+        """Heartbeat loop"""
         while self._is_running:
             try:
-                # 发送心跳
+                # Send heartbeat
                 await self.send_heartbeat()
                 
-                # 动态调整心跳间隔（基于网络状态和失败次数）
+                # Dynamically adjust heartbeat interval (based on network status and failure times)
                 interval = self._calculate_dynamic_interval()
                 
-                # 等待下一次心跳
+                # Wait for next heartbeat
                 await asyncio.sleep(interval)
                 
             except Exception as e:
-                self.logger.error(f"心跳循环异常: {e}")
+                self.logger.error(f"Heartbeat loop exception: {e}")
                 await asyncio.sleep(self.heartbeat_interval)
     
     async def _network_monitor_loop(self):
-        """网络监控循环"""
+        """Network monitoring loop"""
         while self._is_running:
             try:
-                # 检查网络连接
+                # Check network connection
                 network_ok = await self._check_network_connectivity()
                 
                 if network_ok != self._network_status:
                     self._network_status = network_ok
-                    status_text = "正常" if network_ok else "异常"
-                    self.logger.info(f"网络状态变化: {status_text}")
+                    status_text = "normal" if network_ok else "abnormal"
+                    self.logger.info(f"Network status changed: {status_text}")
                 
                 self._last_network_check = datetime.now()
                 
-                # 每60秒检查一次网络
+                # Check network every 60 seconds
                 await asyncio.sleep(60)
                 
             except Exception as e:
-                self.logger.error(f"网络监控异常: {e}")
+                self.logger.error(f"Network monitoring exception: {e}")
                 await asyncio.sleep(60)
     
     async def _health_analysis_loop(self):
-        """健康分析循环"""
+        """Health analysis loop"""
         while self._is_running:
             try:
-                # 分析心跳历史数据
+                # Analyze heartbeat history data
                 await self._analyze_heartbeat_patterns()
                 
-                # 每5分钟分析一次
+                # Analyze every 5 minutes
                 await asyncio.sleep(300)
                 
             except Exception as e:
-                self.logger.error(f"健康分析异常: {e}")
+                self.logger.error(f"Health analysis exception: {e}")
                 await asyncio.sleep(300)
     
     async def _verify_local_health(self) -> bool:
-        """验证本地健康状态"""
+        """Validate local health status"""
         try:
-            # 检查关键进程是否运行
+            # Check if critical process is running
             import psutil
             
             current_pid = os.getpid()
             process = psutil.Process(current_pid)
             
-            # 检查进程状态
+            # Check process status
             if not process.is_running():
                 return False
             
-            # 检查内存使用
+            # Check memory usage
             memory_percent = process.memory_percent()
-            if memory_percent > 90:  # 内存使用超过90%
-                self.logger.warning(f"内存使用过高: {memory_percent:.1f}%")
+            if memory_percent > 90:  # Memory usage exceeds 90%
+                self.logger.warning(f"Memory usage too high: {memory_percent:.1f}%")
                 return False
             
-            # 检查CPU使用
+            # Check CPU usage
             cpu_percent = process.cpu_percent()
-            if cpu_percent > 95:  # CPU使用超过95%
-                self.logger.warning(f"CPU使用过高: {cpu_percent:.1f}%")
+            if cpu_percent > 95:  # CPU usage exceeds 95%
+                self.logger.warning(f"CPU usage too high: {cpu_percent:.1f}%")
                 return False
             
             return True
             
         except Exception as e:
-            self.logger.warning(f"验证本地健康状态异常: {e}")
+            self.logger.warning(f"Verify local health status exception: {e}")
             return False
     
     async def _verify_api_health(self) -> bool:
-        """验证API健康状态"""
+        """Validate API health status"""
         try:
             import aiohttp
             
-            # 获取配置中的API端口
+            # Get API port from configuration
             api_host = self.config.get('api_host', '0.0.0.0')
             api_port = self.config.get('api_port', 8001)
             
-            # Windows环境下，0.0.0.0需要转换为127.0.0.1
+            # On Windows environment, 0.0.0.0 needs to be converted to 127.0.0.1
             if api_host == '0.0.0.0' and os.name == 'nt':
                 api_host = '127.0.0.1'
             
-            # 尝试连接API健康检查端点
+            # Try connecting to API health check endpoint
             async with aiohttp.ClientSession() as session:
-                # 首先尝试使用转换后的主机名
+                # First try using converted host name
                 try:
                     async with session.get(f'http://{api_host}:{api_port}/health', timeout=5) as response:
                         if response.status == 200:
                             return True
                 except Exception as e:
-                    self.logger.debug(f"API健康检查失败 ({api_host}:{api_port}): {e}")
+                    self.logger.debug(f"API health check failed ({api_host}:{api_port}): {e}")
                 
-                # 如果第一个端点失败，尝试备选端点
+                # If first endpoint fails, try alternative endpoint
                 try:
                     async with session.get(f'http://{api_host}:{api_port}/status', timeout=5) as response:
                         if response.status == 200:
                             return True
                 except Exception as e:
-                    self.logger.debug(f"API状态检查失败 ({api_host}:{api_port}): {e}")
+                    self.logger.debug(f"API status check failed ({api_host}:{api_port}): {e}")
                 
-                # 如果两个端点都失败，尝试使用127.0.0.1作为备选（如果当前不是127.0.0.1）
+                # If both endpoints fail, try using 127.0.0.1 as alternative (if current is not 127.0.0.1)
                 if api_host != '127.0.0.1':
                     try:
                         async with session.get(f'http://127.0.0.1:{api_port}/health', timeout=5) as response:
                             if response.status == 200:
                                 return True
                     except Exception as e:
-                        self.logger.debug(f"备选API健康检查失败 (127.0.0.1:{api_port}): {e}")
+                        self.logger.debug(f"Alternative API health check failed (127.0.0.1:{api_port}): {e}")
                 
-                # 最后尝试localhost
+                # Finally try localhost
                 try:
                     async with session.get(f'http://localhost:{api_port}/health', timeout=5) as response:
                         if response.status == 200:
                             return True
                 except Exception as e:
-                    self.logger.debug(f"localhost API健康检查失败: {e}")
+                    self.logger.debug(f"localhost API health check failed: {e}")
             
             return False
             
         except Exception as e:
-            self.logger.warning(f"验证API健康状态异常: {e}")
+            self.logger.warning(f"Verify API health status exception: {e}")
             return False
     
     async def _verify_websocket_health(self) -> bool:
-        """验证WebSocket健康状态"""
+        """Validate WebSocket health status"""
         try:
-            # 检查WebSocket连接状态
-            # 这里需要根据实际的WebSocket实现进行调整
+            # Check WebSocket connection status
+            # This needs to be adjusted based on actual WebSocket implementation
             
-            # 临时实现：如果WebSocket客户端存在且连接正常
+            # Temporary implementation: If WebSocket client exists and connection is normal
             from ..websocket.global_websocket_manager import get_websocket_manager
             manager = await get_websocket_manager()
             return manager.is_running() == manager.is_supposed()
             
         except Exception as e:
-            self.logger.warning(f"验证WebSocket健康状态异常: {e}")
-            return True  # WebSocket不是核心功能，失败不影响整体
+            self.logger.warning(f"Verify WebSocket health status exception: {e}")
+            return True  # WebSocket不是核心功能，Failure不影响整体
     
     async def _check_network_connectivity(self) -> bool:
-        """检查网络连接性"""
+        """Check network connectivity"""
         try:
             import aiohttp
             
-            # 测试连接到可靠的外部服务
+            # Test connection to reliable external services
             test_urls = [
-                'http://www.google.com/generate_204',  # Google的204响应
-                'http://www.baidu.com',                # 百度
-                'http://www.qq.com'                    # 腾讯
+                'http://www.google.com/generate_204',  # Google's 204 response
+                'http://www.baidu.com',                # Baidu
+                'http://www.qq.com'                    # Tencent
             ]
             
             async with aiohttp.ClientSession() as session:
@@ -309,13 +309,13 @@ class HeartbeatManager:
             return False
             
         except Exception as e:
-            self.logger.warning(f"检查网络连接性异常: {e}")
+            self.logger.warning(f"Check network connectivity exception: {e}")
             return False
     
     async def _analyze_heartbeat_results(self, results: List) -> bool:
-        """分析心跳结果"""
+        """Analyze heartbeat results"""
         try:
-            # 统计成功数量
+            # Count success count
             success_count = 0
             total_count = 0
             
@@ -325,47 +325,47 @@ class HeartbeatManager:
                     if result:
                         success_count += 1
             
-            # 如果网络异常，降低成功标准
+            # If network exception, lower success standard
             if not self._network_status:
-                return success_count >= 1  # 只需要一个成功
+                return success_count >= 1  # Only need one success
             
-            # 正常情况需要至少2个成功
+            # Normal case needs at least 2 successes
             return success_count >= 2
             
         except Exception as e:
-            self.logger.error(f"分析心跳结果异常: {e}")
+            self.logger.error(f"Analyze heartbeat results exception: {e}")
             return False
     
     async def _trigger_recovery(self):
-        """触发恢复机制"""
+        """Trigger recovery mechanism"""
         if self._recovery_in_progress:
             return
         
         self._recovery_in_progress = True
         
         try:
-            self.logger.warning("触发自动恢复机制...")
+            self.logger.warning("Triggering automatic recovery mechanism...")
             
-            # 根据失败模式选择恢复策略
+            # Select recovery strategy based on failure pattern
             recovery_strategy = self._select_recovery_strategy()
             
             if recovery_strategy:
                 success = await recovery_strategy()
                 
                 if success:
-                    self.logger.info("自动恢复成功")
+                    self.logger.info("Automatic recovery successful")
                     self._consecutive_failures = 0
                 else:
-                    self.logger.error("自动恢复失败")
+                    self.logger.error("Automatic recovery failed")
             
         except Exception as e:
-            self.logger.error(f"触发恢复机制异常: {e}")
+            self.logger.error(f"Trigger recovery mechanism exception: {e}")
         finally:
             self._recovery_in_progress = False
     
     def _select_recovery_strategy(self):
-        """选择恢复策略"""
-        # 基于失败模式和历史数据选择策略
+        """Select recovery strategy"""
+        # Select strategy based on failure pattern and historical data
         failure_pattern = self._analyze_failure_pattern()
         
         if failure_pattern == 'network':
@@ -376,104 +376,104 @@ class HeartbeatManager:
             return self._recovery_strategy_quick_restart
     
     async def _recovery_strategy_quick_restart(self) -> bool:
-        """快速重启策略"""
+        """Quick restart strategy"""
         try:
-            self.logger.info("执行快速重启策略...")
+            self.logger.info("Executing quick restart strategy...")
             
-            # 等待短暂时间
+            # Wait for a short time
             await asyncio.sleep(2)
             
-            # 这里需要调用应用的重启逻辑
-            # 暂时返回成功
+            # Need to call application's restart logic here
+            # Temporarily return success
             return True
             
         except Exception as e:
-            self.logger.error(f"快速重启策略异常: {e}")
+            self.logger.error(f"Quick restart strategy exception: {e}")
             return False
     
     async def _recovery_strategy_delayed_restart(self) -> bool:
-        """延迟重启策略"""
+        """Delayed restart strategy"""
         try:
-            self.logger.info("执行延迟重启策略...")
+            self.logger.info("Executing delayed restart strategy...")
             
-            # 等待更长时间（网络问题需要更多时间恢复）
+            # Wait for a longer time (network issues need more time to recover)
             await asyncio.sleep(10)
             
-            # 这里需要调用应用的重启逻辑
-            # 暂时返回成功
+            # Need to call application's restart logic here
+            # Temporarily return success
             return True
             
         except Exception as e:
-            self.logger.error(f"延迟重启策略异常: {e}")
+            self.logger.error(f"Delayed restart strategy exception: {e}")
             return False
     
     async def _recovery_strategy_full_reset(self) -> bool:
-        """完全重置策略"""
+        """Full reset strategy"""
         try:
-            self.logger.info("执行完全重置策略...")
+            self.logger.info("Executing full reset strategy...")
             
-            # 清理资源
+            # Clean up resources
             await self._cleanup_resources()
             
-            # 等待重置
+            # Wait for reset
             await asyncio.sleep(5)
             
-            # 这里需要调用应用的完全重启逻辑
-            # 暂时返回成功
+            # Need to call application's full restart logic here
+            # Temporarily return success
             return True
             
         except Exception as e:
-            self.logger.error(f"完全重置策略异常: {e}")
+            self.logger.error(f"Full reset strategy exception: {e}")
             return False
     
     def _calculate_dynamic_interval(self) -> int:
-        """计算动态心跳间隔"""
+        """Calculate dynamic heartbeat interval"""
         base_interval = self.heartbeat_interval
         
-        # 基于失败次数调整间隔
+        # Adjust interval based on failure times
         if self._consecutive_failures > 0:
-            # 失败次数越多，间隔越短（更频繁检查）
+            # More failure times, shorter interval (more frequent checks)
             multiplier = max(0.5, 1 - (self._consecutive_failures * 0.1))
             base_interval = int(base_interval * multiplier)
         
-        # 基于网络状态调整间隔
+        # Adjust interval based on network status
         if not self._network_status:
-            base_interval = min(base_interval * 2, 120)  # 网络异常时延长间隔
+            base_interval = min(base_interval * 2, 120)  # Extend interval during network exceptions
         
-        return max(10, base_interval)  # 最小间隔10秒
+        return max(10, base_interval)  # Minimum interval 10 seconds
     
     def _record_heartbeat(self, record: Dict):
-        """记录心跳历史"""
+        """Record heartbeat history"""
         self._heartbeat_history.append(record)
         
-        # 限制历史记录大小
+        # Limit history size
         if len(self._heartbeat_history) > self._max_history_size:
             self._heartbeat_history = self._heartbeat_history[-self._max_history_size:]
     
     async def _analyze_heartbeat_patterns(self):
-        """分析心跳模式"""
+        """Analyze heartbeat patterns"""
         try:
             if len(self._heartbeat_history) < 10:
                 return
             
-            # 分析失败模式
+            # Analyze failure patterns
             recent_failures = [h for h in self._heartbeat_history[-20:] if not h['success']]
             
             if len(recent_failures) > 5:
-                self.logger.warning("检测到频繁心跳失败，可能需要人工干预")
+                self.logger.warning("Detected frequent heartbeat failures, may require manual intervention")
             
         except Exception as e:
-            self.logger.warning(f"分析心跳模式异常: {e}")
+            self.logger.warning(f"Analyze heartbeat patterns exception: {e}")
     
     def _analyze_failure_pattern(self) -> str:
-        """分析失败模式"""
-        # 基于最近的心跳历史分析失败原因
+        """Analyze failure patterns"""
+        # Analyze failure reasons based on recent heartbeat history
         if not self._heartbeat_history:
             return 'unknown'
         
         recent_heartbeats = self._heartbeat_history[-10:]
         
-        # 检查网络相关失败
+        # Check network-related failures
         network_failures = 0
         for hb in recent_heartbeats:
             if not hb['success'] and hb.get('details', {}).get('api') is False:
@@ -482,10 +482,10 @@ class HeartbeatManager:
         if network_failures >= 3:
             return 'network'
         
-        # 检查内存相关失败
+        # Check memory-related failures
         memory_warnings = 0
         for hb in recent_heartbeats:
-            if hb.get('response_time', 0) > 10000:  # 响应时间超过10秒
+            if hb.get('response_time', 0) > 10000:  # Response time exceeds 10 seconds
                 memory_warnings += 1
         
         if memory_warnings >= 2:
@@ -494,17 +494,17 @@ class HeartbeatManager:
         return 'unknown'
     
     async def _cleanup_resources(self):
-        """清理资源"""
+        """Clean up resources"""
         try:
-            # 清理临时资源
+            # Clean up temporary resources
             import gc
             gc.collect()
             
         except Exception as e:
-            self.logger.warning(f"清理资源异常: {e}")
+            self.logger.warning(f"Cleanup resources exception: {e}")
     
     def get_status(self) -> Dict[str, any]:
-        """获取心跳管理器状态"""
+        """Get heartbeat manager status"""
         return {
             'running': self._is_running,
             'last_successful_heartbeat': self._last_successful_heartbeat.isoformat() if self._last_successful_heartbeat else None,
@@ -516,5 +516,5 @@ class HeartbeatManager:
 
 
 def create_heartbeat_manager() -> HeartbeatManager:
-    """创建心跳管理器实例"""
+    """Create heartbeat manager instance"""
     return HeartbeatManager()

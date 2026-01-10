@@ -1,95 +1,95 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-子进程执行工具类 - 集成项目统一日志系统
-提供subprocess.run的增强封装，自动记录执行过程和结果到项目日志
+Subprocess execution utility class - Integrated with project unified logging system
+Provides enhanced encapsulation of subprocess.run, automatically records execution process and results to project logs
 """
 
 import subprocess
 from typing import List, Union
 
-# 使用项目统一日志系统
+# [Use] project [unified] logging system
 from ..logger import get_logger
 
 logger = get_logger(__name__)
 
 
 class SubprocessLogger:
-    """子进程执行日志记录器"""
+    """[Sub] process execution log [recorder]"""
     
     def __init__(self, command_name: str = "unknown"):
         """
-        初始化子进程日志记录器
+        Initialize subprocess logger
         
         Args:
-            command_name: 命令名称，用于日志标识
+            command_name: Command name, used for log identification
         """
         self.command_name = command_name
         self.logger = logger
     
     def log_command_start(self, command: Union[str, List[str]], **kwargs) -> None:
-        """记录命令开始执行"""
-        # 构建命令字符串用于日志
+        """[Record command start] execution"""
+        # [Build command string for] logging
         if isinstance(command, list):
             cmd_str = ' '.join(command)
         else:
             cmd_str = command
         
-        # 记录关键参数
-        log_info = f"开始执行命令: {cmd_str}"
+        # [Record key] parameters
+        log_info = f"Starting command execution: {cmd_str}"
         
-        # 添加重要参数信息
+        # [Add important] parameter info
         if 'cwd' in kwargs:
-            log_info += f" | 工作目录: {kwargs['cwd']}"
+            log_info += f" | Working directory: {kwargs['cwd']}"
         if 'timeout' in kwargs:
-            log_info += f" | 超时时间: {kwargs['timeout']}秒"
+            log_info += f" | Timeout: {kwargs['timeout']} seconds"
         if 'shell' in kwargs and kwargs['shell']:
-            log_info += " | 使用shell模式"
+            log_info += " | Using shell mode"
         
         self.logger.info(log_info)
     
     def log_command_result(self, result: subprocess.CompletedProcess, 
                           execution_time: float = None) -> None:
-        """记录命令执行结果"""
+        """[Record command] execution [result]"""
         
-        # 构建结果日志
-        result_info = f"命令执行完成 - 退出码: {result.returncode}"
+        # [Build result] log
+        result_info = f"Command execution completed - Exit code: {result.returncode}"
         
         if execution_time is not None:
-            result_info += f" | 执行时间: {execution_time:.2f}秒"
+            result_info += f" | Execution time: {execution_time:.2f} seconds"
         
-        # 根据退出码决定日志级别
+        # [Determine log level based on] exit code
         if result.returncode == 0:
             self.logger.info(result_info)
         else:
             self.logger.warning(result_info)
         
-        # 记录标准输出（如果有内容）
+        # [Record standard output] (if [there is content])
         if result.stdout and result.stdout.strip():
-            # 限制输出长度，避免日志过大
+            # [Limit output length], [avoid] log [too large]
             stdout_content = result.stdout.strip()
             if len(stdout_content) > 1000:
-                stdout_content = stdout_content[:1000] + "... [内容过长被截断]"
+                stdout_content = stdout_content[:1000] + "... [content too long, truncated]"
             
-            self.logger.debug(f"标准输出: {stdout_content}")
+            self.logger.debug(f"Standard output: {stdout_content}")
         
-        # 记录标准错误（如果有内容）
+        # [Record standard] error (if [there is content])
         if result.stderr and result.stderr.strip():
             stderr_content = result.stderr.strip()
             if len(stderr_content) > 1000:
-                stderr_content = stderr_content[:1000] + "... [内容过长被截断]"
+                stderr_content = stderr_content[:1000] + "... [content too long, truncated]"
             
-            # 错误输出使用警告级别
-            self.logger.warning(f"标准错误: {stderr_content}")
+            # Error [output uses] warning [level]
+            self.logger.warning(f"Standard error: {stderr_content}")
     
     def log_command_error(self, error: Exception, command: Union[str, List[str]]) -> None:
-        """记录命令执行错误"""
+        """[Record command] execution error"""
         if isinstance(command, list):
             cmd_str = ' '.join(command)
         else:
             cmd_str = command
         
-        error_msg = f"命令执行失败: {cmd_str} - 错误: {str(error)}"
+        error_msg = f"Command execution failed: {cmd_str} - Error: {str(error)}"
         self.logger.error(error_msg)
 
 
@@ -97,23 +97,23 @@ def run_with_logging(command: Union[str, List[str]],
                     command_name: str = None,
                     **kwargs) -> subprocess.CompletedProcess:
     """
-    执行命令并自动记录执行过程和结果到项目日志
+    Execute command and automatically record execution process and results to project logs
     
     Args:
-        command: 要执行的命令，可以是字符串或列表
-        command_name: 命令名称，用于日志标识（默认从命令推导）
-        **kwargs: subprocess.run的其他参数
+        command: Command to execute, can be string or list
+        command_name: Command name, used for log identification (default derived from command)
+        **kwargs: Other parameters for subprocess.run
         
     Returns:
-        subprocess.CompletedProcess: 命令执行结果
+        subprocess.CompletedProcess: Command execution result
         
     Raises:
-        subprocess.SubprocessError: 子进程相关错误
-        Exception: 其他执行异常
+        subprocess.SubprocessError: Subprocess related errors
+        Exception: Other execution exceptions
     """
     import time
     
-    # 自动推导命令名称
+    # [Automatically derive command name]
     if command_name is None:
         if isinstance(command, list) and len(command) > 0:
             command_name = command[0]
@@ -122,21 +122,21 @@ def run_with_logging(command: Union[str, List[str]],
         else:
             command_name = "unknown_command"
     
-    # 创建日志记录器
+    # Create log [recorder]
     sp_logger = SubprocessLogger(command_name)
     
-    # 记录命令开始
+    # [Record command start]
     sp_logger.log_command_start(command, **kwargs)
     
     start_time = time.time()
     
     try:
-        # 执行命令
+        # Execute [command]
         result = subprocess.run(command, **kwargs)
         
         execution_time = time.time() - start_time
         
-        # 记录执行结果
+        # [Record] execution [result]
         sp_logger.log_command_result(result, execution_time)
         
         return result
@@ -144,10 +144,10 @@ def run_with_logging(command: Union[str, List[str]],
     except Exception as e:
         execution_time = time.time() - start_time
         
-        # 记录错误信息
+        # [Record] error info
         sp_logger.log_command_error(e, command)
         
-        # 重新抛出异常
+        # [Re-raise] exception
         raise
 
 def run_con_or_none(command: Union[str, List[str]], 
@@ -155,23 +155,23 @@ def run_con_or_none(command: Union[str, List[str]],
                     default_returncode: int = -1,
                     **kwargs):
     """
-        安全执行命令并记录日志，不会抛出异常
+        Safely execute command and log, will not throw exceptions
     
     Args:
-        command: 要执行的命令
-        command_name: 命令名称
-        default_returncode: 异常时的默认返回码
-        **kwargs: subprocess.run的其他参数
+        command: Command to execute
+        command_name: Command name
+        default_returncode: Default return code when exception occurs
+        **kwargs: Other parameters for subprocess.run
         
     Returns:
-        成功时，返回结果内容（stdout.strip()）
-        失败时，返回 None
+        On success, returns result content (stdout.strip())
+        On failure, returns None
     """
     try:
-        # 在Windows系统中，如果命令执行失败，尝试使用shell=True
+        # [In] Windows system, [if] command [execution fails], try [using] shell=True
         import platform
         if platform.system() == "Windows":
-            # 第一次尝试：不使用shell
+            # [First] try: [not using] shell
             result = run_with_logging_safe(
                 command,
                 command_name,
@@ -179,11 +179,13 @@ def run_con_or_none(command: Union[str, List[str]],
                 **kwargs
             )
             
-            # 如果第一次尝试失败且错误是"文件未找到"，则使用shell=True重试
+            # If [first] try [fails] and [error] is "File [not found]", [then use] shell=True [to retry]
             if result.returncode != 0 and ("not found" in result.stderr.lower() or 
                                          "不是内部或外部命令" in result.stderr or
-                                         "系统找不到指定的文件" in result.stderr):
-                # 使用shell=True重试
+                                         "系统找不到指定的文件" in result.stderr or
+                                         "is not recognized as an internal or external command" in result.stderr or
+                                         "The system cannot find the file specified" in result.stderr):
+                # [Use] shell=True [to retry]
                 kwargs_with_shell = kwargs.copy()
                 kwargs_with_shell['shell'] = True
                 
@@ -194,7 +196,7 @@ def run_con_or_none(command: Union[str, List[str]],
                     **kwargs_with_shell
                 )
         else:
-            # 非Windows系统直接执行
+            # [Non] Windows system [directly] execute
             result = run_with_logging_safe(
                 command,
                 command_name,
@@ -202,12 +204,12 @@ def run_con_or_none(command: Union[str, List[str]],
                 **kwargs
             )
         
-        # 检查命令是否执行成功
+        # Check [if command] execution [succeeded]
         if result.returncode == 0:
             return result.stdout.strip()
         else:
-            # 命令执行失败，检查是否是命令不存在
-            if "not found" in result.stderr.lower() or "不是内部或外部命令" in result.stderr:
+            # [Command] execution [failed], check if [command] does not exist
+            if "not found" in result.stderr.lower() or "不是内部或外部命令" in result.stderr or "is not recognized as an internal or external command" in result.stderr:
                 return None
             else:
                 return None
@@ -221,20 +223,20 @@ def run_with_logging_safe(command: Union[str, List[str]],
                          default_returncode: int = -1,
                          **kwargs) -> subprocess.CompletedProcess:
     """
-    安全执行命令并记录日志，不会抛出异常
+    Safely execute command and log, will not throw exceptions
     
     Args:
-        command: 要执行的命令
-        command_name: 命令名称
-        default_returncode: 异常时的默认返回码
-        **kwargs: subprocess.run的其他参数
+        command: Command to execute
+        command_name: Command name
+        default_returncode: Default return code when exception occurs
+        **kwargs: Other parameters for subprocess.run
         
     Returns:
-        subprocess.CompletedProcess: 总是返回结果对象
+        subprocess.CompletedProcess: Always returns result object
     """
     import time
     
-    # 自动推导命令名称
+    # [Automatically derive command name]
     if command_name is None:
         if isinstance(command, list) and len(command) > 0:
             command_name = command[0]
@@ -243,21 +245,21 @@ def run_with_logging_safe(command: Union[str, List[str]],
         else:
             command_name = "unknown_command"
     
-    # 创建日志记录器
+    # Create log [recorder]
     sp_logger = SubprocessLogger(command_name)
     
-    # 记录命令开始
+    # [Record command start]
     sp_logger.log_command_start(command, **kwargs)
     
     start_time = time.time()
     
     try:
-        # 执行命令
+        # Execute [command]
         result = subprocess.run(command, **kwargs)
         
         execution_time = time.time() - start_time
         
-        # 记录执行结果
+        # [Record] execution [result]
         sp_logger.log_command_result(result, execution_time)
         
         return result
@@ -265,10 +267,10 @@ def run_with_logging_safe(command: Union[str, List[str]],
     except Exception as e:
         execution_time = time.time() - start_time
         
-        # 记录错误信息
+        # [Record] error info
         sp_logger.log_command_error(e, command)
         
-        # 返回一个模拟的CompletedProcess对象
+        # [Return a simulated] CompletedProcess [object]
         return subprocess.CompletedProcess(
             args=command,
             returncode=default_returncode,
@@ -281,20 +283,20 @@ def check_output_with_logging(command: Union[str, List[str]],
                              command_name: str = None,
                              **kwargs) -> str:
     """
-    执行命令并获取输出，自动记录日志
+    Execute command and get output, automatically log
     
     Args:
-        command: 要执行的命令
-        command_name: 命令名称
-        **kwargs: subprocess.run的其他参数
+        command: Command to execute
+        command_name: Command name
+        **kwargs: Other parameters for subprocess.run
         
     Returns:
-        str: 命令的标准输出
+        str: Command standard output
         
     Raises:
-        subprocess.CalledProcessError: 命令执行失败
+        subprocess.CalledProcessError: Command execution failed
     """
-    # 确保捕获输出
+    # [Ensure capture output]
     kwargs.setdefault('capture_output', True)
     kwargs.setdefault('text', True)
     
@@ -308,36 +310,36 @@ def check_output_with_logging(command: Union[str, List[str]],
     return result.stdout.strip()
 
 
-# 便捷函数，提供与subprocess.run相同的接口
+# [Convenient] functions, [provide same interface as] subprocess.run
 def run(*args, **kwargs):
-    """便捷函数，替代subprocess.run"""
+    """[Convenient] function, [replacement for] subprocess.run"""
     return run_with_logging(*args, **kwargs)
 
 
 def run_safe(*args, **kwargs):
-    """便捷函数，替代subprocess.run但不会抛出异常"""
+    """[Convenient] function, [replacement for] subprocess.run [but will not throw exceptions]"""
     return run_with_logging_safe(*args, **kwargs)
 
 
 def run_async(command: List[str]):
     """
-    异步执行命令，不等待结果
+    Execute command asynchronously, do not wait for result
     
     Args:
-        command: 要执行的命令
+        command: Command to execute
     """
     startupinfo = subprocess.STARTUPINFO()
     startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-    startupinfo.wShowWindow = 0  # 隐藏窗口
+    startupinfo.wShowWindow = 0  # Hide window
     
     creationflags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
     
-    # 构建完整的批处理命令
+    # [Build complete batch command]
     full_cmd = f'start "" /B cmd /c {" ".join(command)}'
 
-    logger.info(f"异步执行命令: {full_cmd}")
+    logger.info(f"Asynchronous command execution: {full_cmd}")
     
-    # 使用start命令创建独立进程
+    # [Use] start [command to] create [independent] process
     subprocess.Popen(
         full_cmd, 
         shell=True,
@@ -352,19 +354,19 @@ def run_detached(command: Union[str, List[str]],
                  command_name: str = None,
                  **kwargs) -> None:
     """
-    后台执行命令，完全分离，不返回任何对象
+    Execute command in background, fully detached, does not return any object
     
     Args:
-        command: 要执行的命令，可以是字符串或列表
-        command_name: 命令名称，用于日志标识
-        **kwargs: subprocess.Popen的其他参数
+        command: Command to execute, can be string or list
+        command_name: Command name, used for log identification
+        **kwargs: Other parameters for subprocess.Popen
         
     Note:
-        - 此函数启动进程后立即返回，不跟踪进程状态
-        - 适用于启动后台服务或不需要监控的进程
-        - 在Windows上使用DETACHED_PROCESS标志实现完全分离
+        - This function returns immediately after starting the process, does not track process status
+        - Suitable for starting background services or processes that don't need monitoring
+        - Uses DETACHED_PROCESS flag on Windows to achieve complete separation
     """
-    # 自动推导命令名称
+    # [Automatically derive command name]
     if command_name is None:
         if isinstance(command, list) and len(command) > 0:
             command_name = command[0]
@@ -373,50 +375,50 @@ def run_detached(command: Union[str, List[str]],
         else:
             command_name = "unknown_command"
     
-    # 创建日志记录器
+    # Create log [recorder]
     sp_logger = SubprocessLogger(command_name)
     
-    # 记录命令开始（后台执行）
+    # [Record command start] ([background] execution)
     sp_logger.log_command_start(command, **kwargs)
-    sp_logger.logger.info(f"后台执行命令，完全分离")
+    sp_logger.logger.info(f"Background command execution, fully detached")
     
-    # 设置分离参数
+    # Setup [detached] parameters
     import platform
     if platform.system() == "Windows":
-        # Windows: 使用DETACHED_PROCESS实现完全分离
+        # Windows: [Use] DETACHED_PROCESS [to achieve complete separation]
         kwargs.setdefault('creationflags', subprocess.DETACHED_PROCESS | 
                                          subprocess.CREATE_NEW_PROCESS_GROUP)
     else:
-        # Unix-like: 使用setsid实现进程组分离
+        # Unix-like: [Use] setsid [to achieve] process [group separation]
         kwargs.setdefault('start_new_session', True)
     
-    # 重定向输出到空设备以避免阻塞
+    # [Redirect output to null device to avoid blocking]
     import os
     kwargs.setdefault('stdout', subprocess.DEVNULL)
     kwargs.setdefault('stderr', subprocess.DEVNULL)
     
     try:
-        # 启动分离进程
+        # Start [detached] process
         process = subprocess.Popen(command, **kwargs)
         
-        # 记录启动信息
-        sp_logger.logger.info(f"后台进程已启动，PID: {process.pid}")
+        # [Record] start info
+        sp_logger.logger.info(f"Background process started, PID: {process.pid}")
         
-        # 立即关闭进程句柄，实现完全分离
+        # [Immediately close] process [handles], [achieve complete separation]
         process.stdout.close() if process.stdout else None
         process.stderr.close() if process.stderr else None
         process.stdin.close() if process.stdin else None
         
     except Exception as e:
-        # 记录错误信息
+        # [Record] error info
         sp_logger.log_command_error(e, command)
         
-        # 重新抛出异常
+        # [Re-raise] exception
         raise
 
 
 def check_output(*args, **kwargs):
-    """便捷函数，替代subprocess.check_output"""
+    """[Convenient] function, [replacement for] subprocess.check_output"""
     return check_output_with_logging(*args, **kwargs)
 
 
@@ -427,32 +429,32 @@ def run_as_admin(command: Union[str, List[str]],
                  cwd: str = None,
                  **kwargs) -> Union[str, None]:
     """
-    以管理员权限执行命令（仅Windows系统）
+    Execute command with administrator privileges (Windows system only)
     
     Args:
-        command: 要执行的命令，可以是字符串或列表
-        command_name: 命令名称，用于日志标识
-        capture_output: 是否捕获输出（默认True）
-        timeout: 命令执行超时时间（秒）
-        cwd: 工作目录
-        **kwargs: 其他subprocess.run参数
+        command: Command to execute, can be string or list
+        command_name: Command name, used for log identification
+        capture_output: Whether to capture output (default True)
+        timeout: Command execution timeout time (seconds)
+        cwd: Working directory
+        **kwargs: Other subprocess.run parameters
         
     Returns:
-        成功时返回命令输出（stdout.strip()），失败时返回None
+        On success, returns command output (stdout.strip()), on failure returns None
         
     Note:
-        - 此功能仅在Windows系统上有效
-        - 会触发UAC（用户账户控制）提示，需要用户确认
-        - 对于需要管理员权限的系统操作非常有用
+        - This feature only works on Windows system
+        - Will trigger UAC (User Account Control) prompt, requires user confirmation
+        - Very useful for system operations requiring administrator privileges
     """
     import platform
     
-    # 检查操作系统
+    # Check [operating] system
     if platform.system() != "Windows":
-        logger.warning("管理员权限执行仅在Windows系统上支持")
+        logger.warning("Administrator privileges execution only supported on Windows system")
         return None
     
-    # 自动推导命令名称
+    # [Automatically derive command name]
     if command_name is None:
         if isinstance(command, list) and len(command) > 0:
             command_name = command[0]
@@ -461,17 +463,17 @@ def run_as_admin(command: Union[str, List[str]],
         else:
             command_name = "admin_command"
     
-    # 构建完整的命令字符串
+    # [Build complete command string]
     if isinstance(command, list):
         cmd_str = ' '.join(f'"{arg}"' if ' ' in arg else arg for arg in command)
     else:
         cmd_str = command
     
     
-    # 实用方案：如果当前进程不是管理员，直接返回错误信息
-    # 避免UAC弹窗导致的阻塞问题
+    # [Practical solution]: If [current] process [is not] administrator, [directly return] error info
+    # [Avoid] UAC [popup causing blocking issues]
     
-    # 检查当前进程是否具有管理员权限
+    # Check [if current] process [has] administrator [permissions]
     def is_admin():
         try:
             import ctypes
@@ -479,53 +481,53 @@ def run_as_admin(command: Union[str, List[str]],
         except:
             return False
     
-    # 准备执行参数
+    # [Prepare] execution parameters
     exec_kwargs = {
         'capture_output': capture_output,
         'text': True,
         'shell': False
     }
     
-    # 添加可选参数
+    # [Add optional] parameters
     if timeout:
         exec_kwargs['timeout'] = timeout
     if cwd:
         exec_kwargs['cwd'] = cwd
     
-    # 合并其他参数
+    # [Merge other] parameters
     exec_kwargs.update(kwargs)
     
     try:
         if is_admin():
-            # 当前进程已经是管理员，直接执行命令
-            logger.info(f"当前进程具有管理员权限，直接执行命令: {cmd_str}")
+            # [Current] process [already is] administrator, [directly] execute [command]
+            logger.info(f"Current process has administrator privileges, executing command directly: {cmd_str}")
             
-            # 构建完整的命令
+            # [Build complete command]
             if isinstance(command, list):
                 result = subprocess.run(command, **exec_kwargs)
             else:
                 result = subprocess.run(cmd_str, **exec_kwargs)
             
-            logger.debug(f"命令执行结果: {result}")
-            # 检查执行结果
+            logger.debug(f"Command execution result: {result}")
+            # Check execution [result]
             if result.returncode == 0:
-                logger.info(f"命令执行成功: {command_name}")
+                logger.info(f"Command execution successful: {command_name}")
                 if capture_output:
                     return result.stdout.strip()
                 else:
-                    return "命令执行成功"
+                    return "Command execution successful"
             else:
-                logger.error(f"命令执行失败，退出码: {result.returncode}")
+                logger.error(f"Command execution failed, exit code: {result.returncode}")
                 if capture_output and result.stderr:
-                    logger.error(f"错误信息: {result.stderr}")
+                    logger.error(f"error info: {result.stderr}")
                 return None
                 
         else:
-            # 当前进程不是管理员，返回错误信息
-            logger.warning(f"当前进程无管理员权限，无法执行需要管理员权限的命令: {cmd_str}")
-            logger.warning(f"建议：请以管理员身份运行此程序")
+            # [Current] process [is not] administrator, [return] error info
+            logger.warning(f"Current process does not have administrator privileges, cannot execute commands requiring administrator privileges: {cmd_str}")
+            logger.warning(f"Recommendation: Please run this program as administrator")
             
-            # 尝试直接执行（可能失败，但不会阻塞）
+            # Try [directly] execute ([may] fail, [but won't block])
             try:
                 if isinstance(command, list):
                     result = subprocess.run(command, **exec_kwargs)
@@ -533,24 +535,24 @@ def run_as_admin(command: Union[str, List[str]],
                     result = subprocess.run(cmd_str, **exec_kwargs)
                 
                 if result.returncode == 0:
-                    logger.info(f"命令执行成功（无需管理员权限）: {command_name}")
+                    logger.info(f"Command execution successful (no administrator privileges required): {command_name}")
                     if capture_output:
                         return result.stdout.strip()
                     else:
-                        return "命令执行成功"
+                        return "Command execution successful"
                 else:
-                    logger.warning(f"命令执行失败（权限不足）: {command_name}")
+                    logger.warning(f"Command execution failed (insufficient permissions): {command_name}")
                     return None
                     
             except Exception as e:
-                logger.warning(f"尝试执行命令失败（权限不足）: {e}")
+                logger.warning(f"Attempt to execute command failed (insufficient permissions): {e}")
                 return None
             
     except subprocess.TimeoutExpired:
-        logger.error(f"命令执行超时: {cmd_str}")
+        logger.error(f"Command execution timeout: {cmd_str}")
         return None
     except Exception as e:
-        logger.error(f"执行命令时发生异常: {e}")
+        logger.error(f"Exception occurred while executing command: {e}")
         return None
 
 
@@ -558,24 +560,24 @@ def run_cmd_as_admin(cmd_command: str,
                      command_name: str = None,
                      **kwargs) -> Union[str, None]:
     """
-    以管理员权限执行cmd命令
+    Execute cmd command with administrator privileges
     
     Args:
-        cmd_command: 要执行的cmd命令
-        command_name: 命令名称，用于日志标识
-        **kwargs: 其他参数（同run_as_admin）
+        cmd_command: cmd command to execute
+        command_name: Command name, used for log identification
+        **kwargs: Other parameters (same as run_as_admin)
         
     Returns:
-        成功时返回命令输出，失败时返回None
+        On success, returns command output, on failure returns None
         
     Example:
         >>> run_cmd_as_admin("net session", "check_admin")
         >>> run_cmd_as_admin("sc query eventlog", "service_check")
     """
-    # 使用cmd.exe执行命令
+    # [Use] cmd.exe [to execute] command
     full_command = ['cmd.exe', '/c', cmd_command]
     
-    # 自动设置命令名称
+    # [Automatically] setup [command name]
     if command_name is None:
         command_name = cmd_command.split()[0] if ' ' in cmd_command else cmd_command
         command_name = f"cmd_{command_name}"
