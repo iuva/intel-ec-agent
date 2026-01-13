@@ -25,3 +25,10 @@ def calculate_md5(file_path):
     
     return md5_hash.hexdigest()
 
+if __name__ == "__main__":
+    """
+    Main function, used to verify file integrity
+    """
+    
+    actual_md5 = calculate_md5('F:/testPc/dragTest/dist/local_agent_new.exe')
+    print(f"Actual MD5: {actual_md5}")

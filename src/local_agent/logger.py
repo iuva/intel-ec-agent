@@ -20,8 +20,10 @@ import logging
 import sys
 import os
 import io
+import threading
+import time
 from pathlib import Path
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Union
 from logging.handlers import RotatingFileHandler
 
 
@@ -31,6 +33,11 @@ class UnifiedLogger:
     def __init__(self, name: str = "local_agent"):
         self.name = name
         self.logger = logging.getLogger(name)
+        
+        # Log replica management
+        self.replica_handlers: Dict[str, logging.Handler] = {}  # Active replica handlers
+        self.replica_counter = 0  # Replica counter for unique IDs
+        self.replica_lock = threading.RLock()  # Thread lock for replica operations
         
         # Ensure initialization only once
         if not self.logger.handlers:
@@ -233,6 +240,169 @@ class UnifiedLogger:
         self.info(f"[PRINT] {msg}", *args, **kwargs)
 
 
+    # Log replica management methods
+    
+    def start_log_replica(self, replica_name: str = None, 
+                         replica_dir: str = "logs/replicas",
+                         max_size: int = 10 * 1024 * 1024,
+                         backup_count: int = 10,
+                         level: Union[str, int] = logging.INFO) -> str:
+        """
+        Start a log replica - creates a separate log file for specific logging needs
+        
+        Args:
+            replica_name: Custom name for the replica (optional)
+            replica_dir: Directory to store replica files
+            max_size: Maximum file size in bytes (default: 10MB)
+            backup_count: Number of backup files to keep
+            level: Logging level for the replica
+            
+        Returns:
+            Replica ID that can be used to stop the replica
+        """
+        with self.replica_lock:
+            # Generate unique replica ID
+            self.replica_counter += 1
+            timestamp = int(time.time())
+            replica_id = f"replica_{timestamp}_{self.replica_counter:03d}"
+            
+            # Create replica file name
+            if replica_name:
+                filename = f"{replica_name}_{replica_id}.log"
+            else:
+                filename = f"{replica_id}.log"
+            
+            replica_file = Path(replica_dir) / filename
+            
+            # Ensure directory exists
+            replica_file.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Create replica handler
+            replica_handler = RotatingFileHandler(
+                replica_file,
+                maxBytes=max_size,
+                backupCount=backup_count,
+                encoding='utf-8'
+            )
+            
+            # Set log level
+            if isinstance(level, str):
+                level = getattr(logging, level.upper())
+            replica_handler.setLevel(level)
+            
+            # Use same formatter as main logger for consistency
+            if self.logger.handlers:
+                replica_handler.setFormatter(self.logger.handlers[0].formatter)
+            else:
+                # Fallback formatter
+                formatter = logging.Formatter(
+                    '%(asctime)s [%(levelname)-8s] %(name)s [PID:%(process)d] - %(message)s',
+                    datefmt='%Y-%m-%d %H:%M:%S'
+                )
+                replica_handler.setFormatter(formatter)
+            
+            # Add handler to logger
+            self.logger.addHandler(replica_handler)
+            
+            # Store handler for later removal
+            self.replica_handlers[replica_id] = replica_handler
+            
+            # Log replica creation
+            self.info(f"Log replica started: {replica_id} -> {replica_file}")
+            
+            return replica_id
+    
+    def stop_log_replica(self, replica_id: str):
+        """
+        Stop a specific log replica
+        
+        Args:
+            replica_id: The replica ID returned by start_log_replica
+        """
+        with self.replica_lock:
+            if replica_id in self.replica_handlers:
+                handler = self.replica_handlers[replica_id]
+                
+                # Remove handler from logger
+                self.logger.removeHandler(handler)
+                
+                # Close and flush handler
+                handler.flush()
+                handler.close()
+                
+                # Remove from active replicas
+                del self.replica_handlers[replica_id]
+                
+                self.info(f"Log replica stopped: {replica_id}")
+            else:
+                self.warning(f"Log replica not found: {replica_id}")
+    
+    def stop_all_replicas(self):
+        """Stop all active log replicas"""
+        with self.replica_lock:
+            replica_ids = list(self.replica_handlers.keys())
+            for replica_id in replica_ids:
+                self.stop_log_replica(replica_id)
+    
+    def get_active_replicas(self) -> List[str]:
+        """Get list of active replica IDs"""
+        with self.replica_lock:
+            return list(self.replica_handlers.keys())
+    
+    def is_replica_active(self, replica_id: str) -> bool:
+        """Check if a specific replica is active"""
+        with self.replica_lock:
+            return replica_id in self.replica_handlers
+    
+    def get_latest_replica_file(self, replica_dir: str = "logs/replicas") -> Optional[str]:
+        """
+        Get the file path of the latest replica log file based on creation time
+        
+        Args:
+            replica_dir: Directory to search for replica files
+            
+        Returns:
+            Path to the latest replica file, or None if no replica files found
+        """
+        try:
+            replica_path = Path(replica_dir)
+            
+            # Check if directory exists
+            if not replica_path.exists() or not replica_path.is_dir():
+                return None
+            
+            # Find all replica log files
+            replica_files = list(replica_path.glob("*.log"))
+            
+            if not replica_files:
+                return None
+            
+            # Sort files by creation time (newest first)
+            replica_files_with_time = []
+            for file_path in replica_files:
+                try:
+                    # Get file creation time
+                    creation_time = file_path.stat().st_ctime
+                    replica_files_with_time.append((creation_time, file_path))
+                except (OSError, IOError):
+                    # Skip files that can't be accessed
+                    continue
+            
+            # Sort by creation time (descending - newest first)
+            replica_files_with_time.sort(key=lambda x: x[0], reverse=True)
+            
+            if replica_files_with_time:
+                # Return the path of the newest file
+                return str(replica_files_with_time[0][1])
+            else:
+                return None
+                
+        except Exception as e:
+            # Log error but don't crash
+            self.logger.warning(f"Error getting latest replica file: {e}")
+            return None
+
+
 # Global logger instance management
 _global_loggers: Dict[str, UnifiedLogger] = {}
 # Redirection status marker
@@ -403,3 +573,58 @@ def get_module_logger(module_name: str = None):
             del frame
     
     return get_logger(module_name)
+
+
+# Log replica convenience functions
+def start_log_replica(replica_name: str = None, 
+                     replica_dir: str = "logs/replicas",
+                     max_size: int = 10 * 1024 * 1024,
+                     backup_count: int = 3,
+                     level: Union[str, int] = logging.INFO) -> str:
+    """
+    Start a log replica using the main logger
+    
+    Args:
+        replica_name: Custom name for the replica (optional)
+        replica_dir: Directory to store replica files
+        max_size: Maximum file size in bytes (default: 10MB)
+        backup_count: Number of backup files to keep
+        level: Logging level for the replica
+        
+    Returns:
+        Replica ID that can be used to stop the replica
+    """
+    return get_logger().start_log_replica(replica_name, replica_dir, max_size, backup_count, level)
+
+
+def stop_log_replica(replica_id: str):
+    """Stop a specific log replica using the main logger"""
+    get_logger().stop_log_replica(replica_id)
+
+
+def stop_all_replicas():
+    """Stop all active log replicas using the main logger"""
+    get_logger().stop_all_replicas()
+
+
+def get_active_replicas() -> List[str]:
+    """Get list of active replica IDs from the main logger"""
+    return get_logger().get_active_replicas()
+
+
+def is_replica_active(replica_id: str) -> bool:
+    """Check if a specific replica is active using the main logger"""
+    return get_logger().is_replica_active(replica_id)
+
+
+def get_latest_replica_file(replica_dir: str = "logs/replicas") -> Optional[str]:
+    """
+    Get the file path of the latest replica log file using the main logger
+    
+    Args:
+        replica_dir: Directory to search for replica files
+        
+    Returns:
+        Path to the latest replica file, or None if no replica files found
+    """
+    return get_logger().get_latest_replica_file(replica_dir)

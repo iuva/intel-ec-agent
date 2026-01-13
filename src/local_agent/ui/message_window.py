@@ -67,8 +67,10 @@ class MessageWindow:
                                  confirm_show: bool = True,
                                  cancel_show: bool = False,
                                  confirm_text: str = "OK",
-                                 cancel_text: str = "Cancel") -> Optional[str]:
-        """Create custom message box"""
+                                 cancel_text: str = "Cancel",
+                                 confirm_timeout: Optional[int] = None,
+                                 cancel_timeout: Optional[int] = None) -> Optional[str]:
+        """Create custom message box with button timeout support"""
         try:
             # Create top-level window
             top = tk.Toplevel(self._root)
@@ -119,20 +121,30 @@ class MessageWindow:
                 result[0] = choice
                 top.destroy()
             
-            # Add confirm button
+            # Add confirm button with timeout support
+            confirm_btn = None
             if confirm_show:
+                confirm_btn_text = confirm_text
+                if confirm_timeout is not None:
+                    confirm_btn_text = f"{confirm_text} ({confirm_timeout}s)"
+                
                 confirm_btn = ttk.Button(
                     button_frame, 
-                    text=confirm_text, 
+                    text=confirm_btn_text, 
                     command=lambda: on_button_click(confirm_text)
                 )
                 confirm_btn.pack(side=tk.LEFT, padx=5)
             
-            # Add cancel button
+            # Add cancel button with timeout support  
+            cancel_btn = None
             if cancel_show:
+                cancel_btn_text = cancel_text
+                if cancel_timeout is not None:
+                    cancel_btn_text = f"{cancel_text} ({cancel_timeout}s)"
+                
                 cancel_btn = ttk.Button(
                     button_frame, 
-                    text=cancel_text, 
+                    text=cancel_btn_text, 
                     command=lambda: on_button_click(cancel_text)
                 )
                 cancel_btn.pack(side=tk.LEFT, padx=5)
@@ -161,6 +173,44 @@ class MessageWindow:
             # Set window position and dimensions
             top.geometry(f"{width}x{height}+{x}+{y}")
             
+            # Start button timeout countdowns if specified
+            timeout_handlers = []
+            
+            def update_button_text(button, text):
+                """Safely update button text in main thread"""
+                if button and button.winfo_exists():
+                    button.config(text=text)
+            
+            def start_button_timeout(button, timeout_seconds, button_text, choice_text):
+                """Start countdown for a button using tkinter's after method"""
+                if timeout_seconds is None:
+                    return
+                
+                def countdown(remaining):
+                    if remaining > 0 and result[0] is None:
+                        # Update button text with countdown
+                        if button and button.winfo_exists():
+                            button.config(text=f"{button_text} ({remaining}s)")
+                        
+                        # Schedule next countdown
+                        top.after(1000, lambda: countdown(remaining - 1))
+                    elif remaining <= 0 and result[0] is None:
+                        # Auto-click if timeout reached and no selection made
+                        if button and button.winfo_exists():
+                            result[0] = choice_text
+                            top.destroy()
+                
+                # Start countdown
+                countdown(timeout_seconds)
+            
+            # Start confirm button timeout
+            if confirm_show and confirm_timeout is not None:
+                start_button_timeout(confirm_btn, confirm_timeout, confirm_text, confirm_text)
+            
+            # Start cancel button timeout
+            if cancel_show and cancel_timeout is not None:
+                start_button_timeout(cancel_btn, cancel_timeout, cancel_text, cancel_text)
+            
             # Wait for window to close
             top.wait_window(top)
             
@@ -177,7 +227,9 @@ class MessageWindow:
                     cancel_show: bool = False,
                     confirm_text: str = "OK",
                     cancel_text: str = "Cancel",
-                    timeout: int = 0) -> MessageResult:
+                    timeout: int = 0,
+                    confirm_timeout: Optional[int] = None,
+                    cancel_timeout: Optional[int] = None) -> MessageResult:
         """Show message box
         
         Args:
@@ -188,6 +240,8 @@ class MessageWindow:
             confirm_text: Confirm button text
             cancel_text: Cancel button text
             timeout: Timeout time (seconds), 0 means no timeout
+            confirm_timeout: Confirm button timeout (seconds), None means no timeout
+            cancel_timeout: Cancel button timeout (seconds), None means no timeout
             
         Returns:
             MessageResult: Message box result
@@ -206,7 +260,9 @@ class MessageWindow:
                 confirm_show=confirm_show,
                 cancel_show=cancel_show,
                 confirm_text=confirm_text,
-                cancel_text=cancel_text
+                cancel_text=cancel_text,
+                confirm_timeout=confirm_timeout,
+                cancel_timeout=cancel_timeout
             )
             
             # Cancel timeout handling

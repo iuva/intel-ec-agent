@@ -22,7 +22,7 @@ import time
 import threading
 from typing import Any, Dict, Optional, Union
 from collections import OrderedDict
-from .constants import DMR_INFO_CACHE_KEY, HARDWARE_INFO_UPLOAD_TASK_ID, AGENT_STATUS_CACHE_KEY, EK_TEST_INFO_CACHE_KEY
+from .constants import DMR_INFO_CACHE_KEY, INIT_CONFIG_CACHE_KEY, HARDWARE_INFO_UPLOAD_TASK_ID, AGENT_STATUS_CACHE_KEY, EK_TEST_INFO_CACHE_KEY
 
 class GlobalCache:
     """
@@ -356,5 +356,12 @@ def set_ek_test_info(info: Dict[str, Any]) -> None:
     """[Convenient] function: set ek [test] info"""
     cache.set(EK_TEST_INFO_CACHE_KEY, info)
 
+def get_init_config() -> Dict[str, Any]:
+    """[Convenient] function: get [initialize] config"""
+    return cache.get(INIT_CONFIG_CACHE_KEY, {})
+
+def set_init_config(config: Dict[str, Any]) -> None:
+    """[Convenient] function: set [initialize] config"""
+    cache.set(INIT_CONFIG_CACHE_KEY, config)
 
 

@@ -90,7 +90,9 @@ class MessageTool:
                         cancel_show: bool = False,
                         confirm_text: str = "OK",
                         cancel_text: str = "Cancel",
-                        timeout: int = 0) -> Optional[str]:
+                        timeout: int = 0,
+                        confirm_timeout: Optional[int] = None,
+                        cancel_timeout: Optional[int] = None) -> Optional[str]:
         """
         Show message box - via HTTP API call
         
@@ -102,6 +104,8 @@ class MessageTool:
             confirm_text: Confirm button text
             cancel_text: Cancel button text
             timeout: Timeout in seconds, 0 means no timeout (wait for user feedback)
+            confirm_timeout: Confirm button timeout in seconds, None means no timeout (countdown display)
+            cancel_timeout: Cancel button timeout in seconds, None means no timeout (countdown display)
             
         Returns:
             Optional[str]: User-selected button text, returns None on timeout or error
@@ -121,7 +125,9 @@ class MessageTool:
                 "cancel_show": cancel_show,
                 "confirm_text": confirm_text,
                 "cancel_text": cancel_text,
-                "timeout": 0  # Force set to 0 to ensure no timeout, completely wait for user feedback
+                "timeout": 0,  # Force set to 0 to ensure no timeout, completely wait for user feedback
+                "confirm_timeout": confirm_timeout,
+                "cancel_timeout": cancel_timeout
             }
             
             self.logger.debug(f"Calling message box API: {self.api_url}/show_message")
@@ -273,7 +279,9 @@ def show_message_box(msg: str,
                     confirm_show: bool = True,
                     cancel_show: bool = False,
                     confirm_text: str = "OK",
-                    cancel_text: str = "Cancel") -> Optional[str]:
+                    cancel_text: str = "Cancel",
+                    confirm_timeout: Optional[int] = None,
+                    cancel_timeout: Optional[int] = None) -> Optional[str]:
     """
     Convenience function to show message box
     
@@ -284,6 +292,8 @@ def show_message_box(msg: str,
         cancel_show: Whether to show cancel button
         confirm_text: Confirm button text
         cancel_text: Cancel button text
+        confirm_timeout: Confirm button timeout in seconds, None means no timeout (countdown display)
+        cancel_timeout: Cancel button timeout in seconds, None means no timeout (countdown display)
         
     Returns:
         Optional[str]: User-selected button text
@@ -295,7 +305,9 @@ def show_message_box(msg: str,
         confirm_show=confirm_show,
         cancel_show=cancel_show,
         confirm_text=confirm_text,
-        cancel_text=cancel_text
+        cancel_text=cancel_text,
+        confirm_timeout=confirm_timeout,
+        cancel_timeout=cancel_timeout
     )
 
 

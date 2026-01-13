@@ -111,7 +111,10 @@ def update_app():
                         # Update [successful], [re]get [hardware] info
                         
                         get_hardware_info()
-
+            
+            update_info = cache.get(APP_UPDATE_CACHE_KEY, {})
+            update_info.pop(name)
+            cache.set(APP_UPDATE_CACHE_KEY, update_info)
 
 def get_hardware_info():
     """

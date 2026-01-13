@@ -40,3 +40,9 @@ APP_UPDATE_CACHE_KEY = "app_update_cache_key"
 
 # ek test info cache key
 EK_TEST_INFO_CACHE_KEY = "ek_test_info_cache_key"
+
+# Initialize configuration data
+INIT_CONFIG_CACHE_KEY = "init_config_cache_key"
+
+# Hardware information acquisition cycle task ID
+HARDWARE_INFO_CYCLE_TASK_ID = "hardware_info_cycle_task_id"

@@ -36,17 +36,21 @@ API模块负责提供RESTful API接口服务，基于FastAPI框架构建，支�
 - **业务逻辑**: 实现具体的API功能
 
 #### 📊 当前接口
-- **POST /api/v1/tool/result**: EK结果汇报接口
-  - 支持工具执行结果上报
-  - 区分EK和EM两种工具类型
-  - 包含详细的执行信息
+- **POST /ek/start/result**: EK启动结果汇报接口
+- **POST /ek/test/result**: EK测试结果汇报接口  
+- **GET /ek/log/last**: 获取最新日志接口
+- **POST /dmr/info/result**: DMR信息结果汇报接口
 
 #### 🧩 数据模型
-- `EKResultRequest`: EK结果汇报请求模型
+- `EKResultEvent`: EK结果事件模型
 - `CommonResponse`: 通用响应模型
+- `DMRResultPayload`: DMR结果数据模型
 - 支持结构化数据验证
 
 ### `__init__.py` - 模块初始化
+- **功能**: 模块包初始化文件
+- **作用**: 定义API模块的导入结构
+- **包含**: 导出主要类和函数供外部使用
 
 #### 📦 功能说明
 - **模块导出**: 定义模块的公共接口

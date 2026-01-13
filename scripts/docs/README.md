@@ -2,51 +2,32 @@
 
 本目录包含项目构建、部署和运维相关的自动化脚本。
 
-## 文件功能概览
+## 📋 文件功能概览
 
 ### 📦 构建脚本
+- `pyinstaller_packager.py` - Python项目打包工具，生成可执行文件
 
-#### `pyinstaller_packager.py`
-- **功能**: Python项目打包工具
-- **作用**: 将Python应用打包为单个可执行文件（.exe）
-- **主要特性**:
-  - 自动安装PyInstaller依赖
-  - 生成MD5校验文件用于版本验证
-  - 嵌入版本信息到exe文件
-  - 支持一键打包和清理
-  - 集成项目统一日志系统
-
-### 🔄 自更新脚本
-
-#### `automatic_update.bat`
-- **功能**: 自动更新批处理脚本
-- **作用**: 实现应用的自更新功能，支持回滚机制
-- **主要特性**:
-  - 服务停止和删除
-  - 进程终止和文件替换
-  - 备份和回滚机制
-  - 详细的日志记录
-  - 管理员权限检查
+### 🔄 自更新脚本  
+- `automatic_update.bat` - 自动更新管理器，支持回滚机制
 
 ### 🛠️ 服务管理脚本
+- `install_service.bat` - Windows服务安装脚本
+- `uninstall_service.bat` - Windows服务卸载脚本
+- `nssm.exe` - Windows服务管理器工具
 
-#### `install_service.bat`
-- **功能**: Windows服务安装脚本
-- **作用**: 使用NSSM将应用安装为Windows服务
-- **主要特性**:
-  - 自动检测NSSM可用性
-  - 服务参数配置
-  - 自动启动设置
-  - 日志文件配置
-  - 服务状态检查
+### 📚 文档目录
+- `docs/` - 详细的脚本使用说明和功能文档
 
-#### `uninstall_service.bat`
-- **功能**: Windows服务卸载脚本
-- **作用**: 安全卸载已安装的服务
-- **主要特性**:
-  - 服务存在性检查
-  - 用户确认机制
-  - 安全停止和删除
+## 🚀 使用说明
+
+根据项目规则，唯一正确的启动方式为：
+```bash
+# 1. 打包应用（开发阶段）
+python scripts/pyinstaller_packager.py
+
+# 2. 以管理员身份运行打包后的exe（生产环境）
+右键管理员运行 dist/local_agent.exe
+```
 
 ### 🔧 工具文件
 

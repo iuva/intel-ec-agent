@@ -137,22 +137,32 @@ class WebSocketMessageHandler:
             set_agent_status(use=True)
             set_agent_status(pre=True)
             details = message['details']
+
+            log_id = self.logger.start_log_replica(replica_name = details['tc_id'])
+
             details['host_id'] = message['host_id']
+            details['log_id'] = log_id
             set_ek_test_info(details)
             # Start EK test status tracking
             ek_status_tracking()
         
-        
-        # Release host notification host_offline_notification
-        @message_manager.register_handler("host_offline_notification", "Host offline notification")
-        async def handle_host_offline_notification(message: Dict[str, Any]):
-            """Handle host offline notification"""
+        def stop_ek_test():
+            """Stop EK test"""
             EK.test_kill()
             VNC.disconnect()
             # Modify test status
             set_agent_status(use=False)
             set_agent_status(test=False)
             set_agent_status(vnc=False)
+            log_id = get_ek_test_info()['log_id']
+            self.logger.stop_log_replica(replica_id = log_id)
+        
+        
+        # Release host notification host_offline_notification
+        @message_manager.register_handler("host_offline_notification", "Host offline notification")
+        async def handle_host_offline_notification(message: Dict[str, Any]):
+            """Handle host offline notification"""
+            stop_ek_test()
 
         # EK status tracking
         async def ek_status_tracking():
@@ -191,17 +201,14 @@ class WebSocketMessageHandler:
                                 # Whether operation is completely ended
                                 set_agent_status(use = False)
                                 # Execute update compensation
+                                log_id = get_ek_test_info()['log_id']
+                                self.logger.stop_log_replica(replica_id = log_id)
                                 update_app()
                                 return
                         
                         # If code is 53016 then disconnect all VNC connections
                         elif code == 53016:
-                            EK.test_kill()
-                            VNC.disconnect()
-                            # Modify test status
-                            set_agent_status(use=False)
-                            set_agent_status(test=False)
-                            set_agent_status(vnc=False)
+                            stop_ek_test()
                             return
 
                     # Rest 10 seconds

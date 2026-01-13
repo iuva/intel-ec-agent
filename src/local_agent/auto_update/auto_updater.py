@@ -17,6 +17,7 @@ from local_agent.utils.file_downloader import FileDownloader
 from local_agent.utils.verify_md5 import calculate_md5
 from local_agent.utils.http_client import http_client
 from local_agent.utils.file_utils import FileUtils
+from local_agent.core.tray_api import agent_update
 
 
 class AutoUpdater:
@@ -100,7 +101,7 @@ class AutoUpdater:
                 return True
             else:
                 self._update_error('verifying', f'MD5 verification failed: expected {expected_md5}, actual {actual_md5}')
-                return False
+                return False 
                 
         except Exception as e:
             self._update_error('verifying', f'Verification exception: {str(e)}')
@@ -172,32 +173,8 @@ class AutoUpdater:
             ]
             
             self.logger.info(f"Executing batch command: {' '.join(cmd)}")
-            
-            # [Start batch in independent] process [mode], [ensuring batch] script [can run independently of current] process
-            # [Use] CREATE_NEW_PROCESS_GROUP [and] DETACHED_PROCESS [flags]
-            startupinfo = subprocess.STARTUPINFO()
-            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-            startupinfo.wShowWindow = 0  # Hide window
-            
-            # [Use] CREATE_NEW_PROCESS_GROUP [to ensure batch] process [is independent]
-            creationflags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
-            
-            # Start [batch] process, [ensuring it's completely independent of current] process
-            # [Use] start [command to create] completely independent [process]
-            import subprocess
-            
-            # [Build complete batch command]
-            full_cmd = f'start "" /B cmd /c "{" ".join(cmd)}"'
-            
-            # [Use] start [command to create] independent [process]
-            subprocess.Popen(
-                full_cmd, 
-                shell=True,
-                startupinfo=startupinfo,
-                creationflags=creationflags,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL
-            )
+
+            agent_update(f'start "" /B cmd /c "{" ".join(cmd)}"')
             
             # [Give batch] process [more] execution time, [ensure] update [script can fully] execute
             import time

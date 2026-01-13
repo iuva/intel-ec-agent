@@ -27,6 +27,8 @@ class MessageRequest(BaseModel):
     confirm_text: str = "OK"
     cancel_text: str = "Cancel"
     timeout: int = 0
+    confirm_timeout: Optional[int] = None
+    cancel_timeout: Optional[int] = None
 
 
 class MessageResponse(BaseModel):
@@ -102,7 +104,9 @@ class MessageAPIService:
                     cancel_show=request.cancel_show,
                     confirm_text=request.confirm_text,
                     cancel_text=request.cancel_text,
-                    timeout=request.timeout
+                    timeout=request.timeout,
+                    confirm_timeout=request.confirm_timeout,
+                    cancel_timeout=request.cancel_timeout
                 )
                 
                 if result.success:
@@ -168,6 +172,43 @@ class MessageAPIService:
             Because EK program has user interface, this interface should be called using service for startup
             """
             EK.start_test(body['tc_id'], body['cycle_name'], body['user_name'])
+            return MessageResponse(
+                success=True,
+                user_choice="confirm"
+            )
+        
+        
+        
+        
+        @self.app.get("/agent_update", response_model=MessageResponse)
+        async def agent_update(cmd: str) -> MessageResponse:
+            """
+            Agent update
+            """
+
+            import subprocess
+
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = 0  # Hide window
+            
+            # [Use] CREATE_NEW_PROCESS_GROUP [to ensure batch] process [is independent]
+            creationflags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
+            
+            # [Use] start [command to create] independent [process]
+            subprocess.Popen(
+                cmd, 
+                shell=True,
+                startupinfo=startupinfo,
+                creationflags=creationflags,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+            
+            # [Give batch] process [more] execution time, [ensure] update [script can fully] execute
+            import time
+            time.sleep(25)
+
             return MessageResponse(
                 success=True,
                 user_choice="confirm"

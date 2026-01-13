@@ -32,6 +32,7 @@ scripts/
   - `pyinstaller_packager.md` - 打包脚本详细说明
   - `automatic_update.md` - 自更新脚本说明
   - `service_management.md` - 服务管理脚本说明
+  - `scripts_directory_overview.md` - 本目录结构说明
 
 ### 📄 文件说明
 
@@ -40,6 +41,7 @@ scripts/
 - **功能**: 项目打包工具
 - **作用**: 将Python应用打包为单个可执行文件
 - **输出**: `dist/local_agent.exe`
+- **使用方式**: 根据项目规则，唯一正确的启动方式为运行此脚本
 
 #### `automatic_update.bat`
 - **类型**: Windows批处理脚本
@@ -48,6 +50,22 @@ scripts/
 - **参数**: 服务名、新旧文件路径、备份目录
 
 #### `install_service.bat`
+- **类型**: Windows批处理脚本
+- **功能**: Windows服务安装脚本
+- **作用**: 使用NSSM将应用安装为Windows服务
+- **依赖**: 需要 `nssm.exe` 文件
+
+#### `uninstall_service.bat`
+- **类型**: Windows批处理脚本
+- **功能**: Windows服务卸载脚本
+- **作用**: 安全卸载已安装的服务
+- **特性**: 包含服务存在性检查和用户确认机制
+
+#### `nssm.exe`
+- **类型**: Windows可执行文件
+- **功能**: Windows服务管理器
+- **作用**: 用于将普通应用程序安装为Windows服务
+- **来源**: Non-Sucking Service Manager 开源工具
 - **类型**: Windows批处理脚本
 - **功能**: 服务安装工具
 - **作用**: 使用NSSM将应用安装为Windows服务

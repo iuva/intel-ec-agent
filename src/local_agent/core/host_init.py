@@ -6,8 +6,8 @@ from dataclasses import dataclass
 
 from ..config import get_config
 from ..logger import get_logger
-from ..core.global_cache import cache, set_agent_status, get_agent_status_by_key
-from .constants import LOCAL_INFO_CACHE_KEY, HARDWARE_INFO_TASK_ID
+from ..core.global_cache import cache, set_agent_status, get_agent_status_by_key, set_init_config, get_init_config
+from .constants import LOCAL_INFO_CACHE_KEY, HARDWARE_INFO_TASK_ID, HARDWARE_INFO_CYCLE_TASK_ID
 from local_agent.core.ek import EK
 from local_agent.core.dmr import DMR
 from ..utils.version_utils import get_app_version, is_newer_version
@@ -19,9 +19,9 @@ from ..utils.environment import Environment
 from ..utils.message_tool import show_message_box
 from ..utils.python_utils import PythonUtils  # Import PythonUtils class
 from ..utils.timer_utils import set_timeout
-from ..utils.time_utils import TimeUtils
 from .vnc import VNC
 from local_agent.core.app_update import report_version
+from local_agent.core.tray_api import get_username
 
 
 @dataclass
@@ -47,6 +47,7 @@ class HostInit:
         self.logger = get_logger(__name__)
         self.logger.info("Host initialization starting")
 
+
         # TryStart VNC Service
         VNC.start_vncserver()
 
@@ -55,7 +56,7 @@ class HostInit:
 
         # Get host info and encapsulate into object
         # Unified username identification mechanism to avoid conflicts caused by inconsistent usernames in service mode
-        username = self._get_unified_username()
+        username = get_username()
         
         local_info = LocalHostInfo(
             mg_id=self.get_machine_guid(),
@@ -66,6 +67,8 @@ class HostInit:
         # Store host info in cache
         cache.set(LOCAL_INFO_CACHE_KEY, local_info)
 
+        self.init_config()
+
         # Version verification, only check when running as exe
         if not Environment.is_development():
             self.check_versions()
@@ -75,6 +78,27 @@ class HostInit:
         
         # from ..utils.websocket_sync_utils import start_websocket_sync
         # start_websocket_sync(True)
+
+    def init_config(self):
+        """
+        Initialize configuration
+        """
+        init_res = http_get(url="/host/agent/init")
+        init_data = init_res.get('data', {})
+        init_code = init_data.get('code', 0)
+
+        config_data = {}
+        if str(init_code) == '200':
+            configs = init_data.get('configs', [])
+            for config in configs:
+                key = config.get('conf_key', '')
+                config_data[key] = config
+        
+        self.logger.info(f"Initialize config: {config_data}")
+
+        # Cache initialize config
+        set_init_config(config_data)
+
 
 
     def get_hardware_info(self):
@@ -106,8 +130,14 @@ class HostInit:
         # Get hardware info
         self.get_hardware_info()
 
+        init_config = get_init_config()
+        hardware_info_cycle = init_config.get('agent_init_hw', {})
+        cycle_second = int(hardware_info_cycle.get('conf_val', 24 * 60))
+
         # Execute again at 00:00 every day
-        set_timeout(TimeUtils.get_seconds_to_next_target("00:00:00"), self.timing_hardware_info)
+        task_id = set_timeout(cycle_second * 60, self.timing_hardware_info)
+        # Cache timed task id
+        cache.set(HARDWARE_INFO_CYCLE_TASK_ID, task_id)
 
         # Check version when not starting
         if not start:
@@ -197,7 +227,8 @@ class HostInit:
                     report_version('agent', agent_new_ver, 1)
                     
                     try:
-                        # Delay import to avoid loop dependency
+                        # Execute update operation asynchronously
+
                         from local_agent.auto_update.auto_updater import AutoUpdater
                         updater = AutoUpdater()
                         # Execute update operation asynchronously
@@ -290,31 +321,7 @@ class HostInit:
             return '127.0.0.1'
 
     
-    """
-    Get host unique ID
-    """
-    def _get_unified_username(self):
-        """Unified username identification mechanism to avoid conflicts caused by inconsistent usernames in service mode"""
-        try:
-            # Method 1: Check if running in service mode
-            import os
-            import sys
-            import getpass
-            import requests
-            
-            # Check environment variables and command line parameters to determine service mode
-            user_domain = os.environ.get('USERDOMAIN')
-            response = requests.get(f"http://127.0.0.1:8001/username", timeout=10)
-            user_name = response.text.strip().replace('"', '')
 
-            return f"{user_domain.lower()}\\{user_name}"
-
-                
-        except Exception as e:
-            self.logger.error(f"Unified username recognition failed: {e}")
-            # Fall back to default method on failure
-            import getpass
-            return getpass.getuser()
 
     def get_machine_guid(self):
         """

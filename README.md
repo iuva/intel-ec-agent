@@ -1,8 +1,8 @@
-# 本地代理服务项目
+# Local Agent 本地代理服务项目
 
 ## 🎯 项目概述
 
-本地代理服务是一个基于Python FastAPI框架开发的Windows服务应用，提供API接口和WebSocket连接功能，**已实现生产环境就绪的部署方案**。
+Local Agent 是一个基于Python开发的本地代理服务应用，提供设备管理、远程控制、自动更新等核心功能，以Windows服务形式运行，**已实现生产环境就绪的完整解决方案**。
 
 ## 🚀 快速开始
 
@@ -42,19 +42,22 @@ curl http://localhost:8001/health
 ```
 f:\testPc\dragTest/
 ├── src/local_agent/          # 源代码目录
-│   ├── api/                  # API接口模块
+│   ├── api/                  # API接口模块（FastAPI服务）
 │   ├── auto_update/          # 自动更新模块
-│   ├── core/                 # 核心功能模块
-│   ├── ui/                   # 用户界面模块
-│   ├── utils/                # 工具类模块
-│   ├── websocket/            # WebSocket客户端模块
+│   ├── core/                 # 核心功能模块（应用主类、双进程保活等）
+│   ├── ui/                   # 用户界面模块（消息对话框、系统托盘）
+│   ├── utils/                # 工具类模块（文件操作、网络通信等）
+│   ├── websocket/            # WebSocket客户端模块（实时通信）
+│   ├── docs/                 # 项目总体文档
 │   ├── config.py             # 配置文件
-│   └── logger.py             # 日志配置
+│   └── logger.py             # 日志配置（支持日志副本功能）
 ├── scripts/                  # 脚本目录
+│   ├── docs/                 # 脚本功能文档
 │   ├── pyinstaller_packager.py # PyInstaller打包脚本
 │   ├── automatic_update.bat  # 自动更新批处理
 │   └── service_management/   # 服务管理脚本
-├── docs/                     # 文档目录
+├── hooks/                    # PyInstaller钩子脚本
+│   └── docs/                 # 钩子脚本文档
 ├── tests/                    # 测试目录
 ├── requirements.txt          # 依赖包列表
 └── VERSION                   # 全局版本号定义
@@ -63,22 +66,43 @@ f:\testPc\dragTest/
 ## ✅ 核心功能
 
 ### 🏗️ 功能模块
-- **FastAPI服务器**: 提供RESTful API接口
-- **WebSocket客户端**: 支持实时双向通信
-- **自动更新**: 支持在线版本检查和自动更新
+- **FastAPI服务器**: 提供RESTful API接口（EK结果汇报、DMR信息上报等）
+- **WebSocket客户端**: 支持实时双向通信（单例模式管理）
+- **自动更新**: 支持在线版本检查和自动更新（MD5校验、备份机制）
 - **Windows服务**: 通过NSSM注册为系统服务
+- **双进程保活**: 两个进程互相监控，确保高可用性
+- **系统托盘**: 后台运行时提供操作入口和状态显示
 
 ### 🔧 工具支持
 - **文件操作**: 安全的文件读写和目录管理
 - **版本管理**: 版本号解析和比较
-- **子进程管理**: 增强的子进程执行工具
+- **子进程管理**: 增强的子进程执行工具（支持管理员权限）
 - **HTTP客户端**: 封装网络请求功能
+- **MD5校验**: 文件完整性验证（大文件分块计算）
+- **定时器工具**: 线程安全定时任务管理
 
-## 📚 文档资源
+### ✨ 新增功能特性
+- **按钮超时功能**: 消息对话框支持按钮倒计时和自动触发
+- **日志副本功能**: 可随时开启/关闭的额外日志记录
+- **VNC服务管理**: VNC连接状态检测和服务管理
+- **系统托盘API**: 用户名获取和代理更新功能
 
-- **📖 项目文档**: `docs/` - 详细的功能说明和架构设计
-- **🔧 脚本说明**: `scripts/docs/` - 各种管理和测试脚本说明
-- **📋 启动指南**: `STARTUP_GUIDE.md` - 快速启动指南
+## 📚 完整文档体系
+
+项目已建立完整的文档体系，所有文档均使用中文编写：
+
+### 📖 模块文档
+- **项目总体文档**: `src/local_agent/docs/` - 项目总体功能说明
+- **API接口文档**: `src/local_agent/api/docs/` - API模块详细说明
+- **自更新文档**: `src/local_agent/auto_update/docs/` - 自动更新功能说明
+- **核心功能文档**: `src/local_agent/core/docs/` - 核心模块详细说明
+- **用户界面文档**: `src/local_agent/ui/docs/` - UI模块功能说明
+- **工具函数文档**: `src/local_agent/utils/docs/` - 工具模块详细说明
+- **WebSocket文档**: `src/local_agent/websocket/docs/` - 通信模块功能说明
+
+### 🔧 支持文档
+- **脚本功能文档**: `scripts/docs/` - 脚本目录功能说明
+- **钩子脚本文档**: `hooks/docs/` - PyInstaller钩子脚本说明
 
 ## 🛡️ 生产环境特性
 

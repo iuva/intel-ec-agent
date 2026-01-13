@@ -7,7 +7,6 @@ Define all FastAPI interface routes
 
 from fastapi import APIRouter, Body
 from pydantic import BaseModel
-from datetime import datetime
 from typing import Dict, Any
 
 from ..config import get_config
@@ -17,8 +16,9 @@ from ..utils.timer_utils import clear_timeout
 from ..core.global_cache import cache, set_agent_status, set_dmr_info, get_agent_status_by_key, get_dmr_upload_task_id, get_dmr_info, set_dmr_upload_task_id
 from ..core.constants import HARDWARE_INFO_TASK_ID
 from ..utils.timer_utils import set_timeout
-from ..utils.time_utils import TimeUtils
 from ..core.app_update import update_app
+from ..core.host_init import VNC
+from ..utils.message_tool import show_message_box
 
 router = APIRouter()
 logger = get_logger(__name__)
@@ -160,11 +160,21 @@ async def report_tool_result(request: EKResultRequest):
             )
         
         # Report hardware info
-        dmr_res = upload_dmr()
+        upload_dmr()
 
-        if dmr_res:
-            # Record test status
-            set_agent_status(test=False)
+        set_agent_status(test=False)
+        
+        result = show_message_box(
+            msg=f"The test has ended. Do you want to close the VNC connection",
+            title="prompt",
+            confirm_text="close",
+            cancel_show=True,
+            cancel_timeout=10
+        )
+        self.logger.info(f"User choice: {result}")
+
+        if result == "confirm":
+            VNC.disconnect()
 
         return CommonResponse(
             code=res_data.get('code'),
@@ -178,6 +188,28 @@ async def report_tool_result(request: EKResultRequest):
             msg=f"Processing failed: {str(e)}"
         )
 
+
+@router.get("/ek/log/last", response_model=CommonResponse)
+async def report_dmr_result(tc_id: str):
+    """
+    Hardware info result reporting interface
+    
+    This interface waits for EK calls, and after being called, it reports the organized information to the server
+    """
+    file_path = logger.get_latest_replica_file()
+    if not file_path:
+        return CommonResponse(
+            code=1,
+            msg="No log file found"
+        )
+
+    return CommonResponse(
+        code=0,
+        msg="success",
+        data={
+            "log_file_path": file_path
+        }
+    )
 
 
 @router.post("/dmr/info/result", response_model=CommonResponse)

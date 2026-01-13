@@ -850,9 +850,9 @@ class WhlUpdater:
         self.logger.info(f"Detected package name: {package_name}")
         
         # Create backup
-        backup_created = self._create_backup(package_name, python_path)
-        if not backup_created:
-            self.logger.warning("Backup creation failed, continuing with update")
+        # backup_created = self._create_backup(package_name, python_path)
+        # if not backup_created:
+        #     self.logger.warning("Backup creation failed, continuing with update")
         
         # Execute [installation]
         success = False
@@ -998,9 +998,9 @@ def update_from_whl_sync(whl_url: str, python_path: str) -> dict:
         logger.info(f"Detected package name: {package_name}")
         
         # Create backup
-        backup_created = updater._create_backup(package_name, python_path)
-        if not backup_created:
-            logger.warning("Backup creation failed, continuing with update")
+        # backup_created = updater._create_backup(package_name, python_path)
+        # if not backup_created:
+        #     logger.warning("Backup creation failed, continuing with update")
         
         # Execute [installation]
         success = False
