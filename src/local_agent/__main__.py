@@ -24,7 +24,6 @@ from local_agent.core.application import run_application
 from local_agent.logger import get_logger, setup_global_logging, redirect_all_output
 from local_agent.ui.message_api import run_message_api_service
 from local_agent.ui.system_tray import start_system_tray
-from local_agent.core.ek import EK
 
 # Import file utility class
 from local_agent.utils.file_utils import FileUtils

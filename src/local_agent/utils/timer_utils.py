@@ -161,12 +161,14 @@ class TimerManager:
                 
                 task.run_count += 1
                 
-                # If it's a single timer, cancel after execution
+                # If it's a single timer, cancel after successful execution
                 if task.timer_type == TimerType.SINGLE:
                     self.cancel_task(task.id)
                     
             except Exception as e:
                 logger.error(f"Timer task execution failed [{task.id}]: {e}")
+                if task.timer_type == TimerType.SINGLE:
+                    self.cancel_task(task.id)
             finally:
                 task.is_running = False
         

@@ -22,31 +22,106 @@ import os
 import io
 import threading
 import time
+import inspect
 from pathlib import Path
 from typing import Optional, Dict, Any, List, Union
 from logging.handlers import RotatingFileHandler
 
 
+class DynamicModuleFormatter(logging.Formatter):
+    """自定义Formatter，动态获取调用者文件名和行号"""
+    
+    def format(self, record):
+        # 动态设置文件名和行号
+        if not hasattr(record, 'file_info') or record.file_info == 'unknown':
+            record.file_info = self._get_caller_file_info(record)
+        return super().format(record)
+    
+    def _get_caller_file_info(self, record):
+        """动态获取调用者文件名和行号"""
+        try:
+            # 使用更简单的方法：直接获取调用栈
+            stack = inspect.stack()
+            
+            # 跳过前几层（当前方法、logging模块等）
+            for frame_info in stack[3:]:  # 跳过前3层：当前方法、format方法、logging调用
+                frame = frame_info.frame
+                
+                # 获取文件名和行号
+                filename = frame.f_code.co_filename
+                lineno = frame_info.lineno
+                
+                # 获取模块名
+                module_name = frame.f_globals.get('__name__', 'unknown')
+                
+                # 跳过logging模块和当前模块
+                if module_name.startswith('logging') or module_name == __name__:
+                    continue
+                
+                # 提取文件名（去掉路径，只保留文件名）
+                if '/' in filename:
+                    filename = filename.split('/')[-1]
+                elif '\\' in filename:
+                    filename = filename.split('\\')[-1]
+                
+                # 如果是Python文件，去掉.py扩展名
+                if filename.endswith('.py'):
+                    filename = filename[:-3]
+                
+                # 组合模块名和文件名
+                module_part = ''
+                if '.' in module_name:
+                    # 提取模块路径的最后一部分
+                    module_parts = module_name.split('.')
+                    if len(module_parts) > 1:
+                        # 取最后两级模块名
+                        module_part = '.'.join(module_parts[-2:]) + '.' if len(module_parts) > 2 else module_parts[-1] + '.'
+                
+                return f"{module_part}{filename}:{lineno}"
+                
+        except Exception as e:
+            # 如果出错，返回默认信息
+            pass
+        
+        return 'unknown'
+
+
 class UnifiedLogger:
     """Unified log management class - Single log entry point for the entire project"""
     
+    _instance = None
+    _lock = threading.Lock()
+    
+    def __new__(cls, name: str = "local_agent"):
+        """全局单例模式，确保只有一个logger实例"""
+        global _global_logger_instance
+        
+        with cls._lock:
+            if _global_logger_instance is None:
+                _global_logger_instance = super().__new__(cls)
+                _global_logger_instance._initialized = False
+            return _global_logger_instance
+    
     def __init__(self, name: str = "local_agent"):
-        self.name = name
-        self.logger = logging.getLogger(name)
-        
-        # Log replica management
-        self.replica_handlers: Dict[str, logging.Handler] = {}  # Active replica handlers
-        self.replica_counter = 0  # Replica counter for unique IDs
-        self.replica_lock = threading.RLock()  # Thread lock for replica operations
-        
-        # Ensure initialization only once
-        if not self.logger.handlers:
-            self._setup_logger()
-            
-            # Only execute redirection and third-party log capture when initializing the main logger
-            if name == "local_agent":
-                self._redirect_stdout_stderr()
-                self._capture_third_party_logs()
+        """初始化全局唯一的logger实例"""
+        if not hasattr(self, '_initialized') or not self._initialized:
+            with self._lock:
+                if not hasattr(self, '_initialized') or not self._initialized:
+                    self.name = "local_agent"  # 固定名称，避免重复创建
+                    self.logger = logging.getLogger("local_agent")
+                    
+                    # Log replica management
+                    self.replica_handlers: Dict[str, logging.Handler] = {}  # Active replica handlers
+                    self.replica_counter = 0  # Replica counter for unique IDs
+                    self.replica_lock = threading.RLock()  # Thread lock for replica operations
+                    
+                    # Ensure initialization only once
+                    if not self.logger.handlers:
+                        self._setup_logger()
+                        self._redirect_stdout_stderr()
+                        self._capture_third_party_logs()
+                    
+                    self._initialized = True
     
     def _setup_logger(self):
         """Configure unified logger - Single entry point for the entire project"""
@@ -71,8 +146,8 @@ class UnifiedLogger:
         self.logger.setLevel(log_level)
         
         # Create unified formatter - enhance readability, include process ID
-        formatter = logging.Formatter(
-            '%(asctime)s [%(levelname)-8s] %(name)s [PID:%(process)d] - %(message)s',
+        formatter = DynamicModuleFormatter(
+            '%(asctime)s [%(levelname)-8s] %(file_info)s [PID:%(process)d] - %(message)s',
             datefmt='%Y-%m-%d %H:%M:%S'
         )
         
@@ -110,7 +185,7 @@ class UnifiedLogger:
         self.logger.addHandler(console_handler)
         
         # Prevent log propagation to root logger
-        self.logger.propagate = False
+        # self.logger.propagate = False
     
     def _redirect_stdout_stderr(self):
         """Redirect standard output and error output to log file - Single entry point for the entire project"""
@@ -246,7 +321,7 @@ class UnifiedLogger:
                          replica_dir: str = "logs/replicas",
                          max_size: int = 10 * 1024 * 1024,
                          backup_count: int = 10,
-                         level: Union[str, int] = logging.INFO) -> str:
+                         level: Union[str, int] = logging.DEBUG) -> str:
         """
         Start a log replica - creates a separate log file for specific logging needs
         
@@ -260,57 +335,65 @@ class UnifiedLogger:
         Returns:
             Replica ID that can be used to stop the replica
         """
-        with self.replica_lock:
-            # Generate unique replica ID
-            self.replica_counter += 1
-            timestamp = int(time.time())
-            replica_id = f"replica_{timestamp}_{self.replica_counter:03d}"
-            
-            # Create replica file name
-            if replica_name:
-                filename = f"{replica_name}_{replica_id}.log"
-            else:
-                filename = f"{replica_id}.log"
-            
-            replica_file = Path(replica_dir) / filename
-            
-            # Ensure directory exists
-            replica_file.parent.mkdir(parents=True, exist_ok=True)
-            
-            # Create replica handler
-            replica_handler = RotatingFileHandler(
-                replica_file,
-                maxBytes=max_size,
-                backupCount=backup_count,
-                encoding='utf-8'
-            )
-            
-            # Set log level
-            if isinstance(level, str):
-                level = getattr(logging, level.upper())
-            replica_handler.setLevel(level)
-            
-            # Use same formatter as main logger for consistency
-            if self.logger.handlers:
-                replica_handler.setFormatter(self.logger.handlers[0].formatter)
-            else:
-                # Fallback formatter
-                formatter = logging.Formatter(
-                    '%(asctime)s [%(levelname)-8s] %(name)s [PID:%(process)d] - %(message)s',
-                    datefmt='%Y-%m-%d %H:%M:%S'
+        try:
+            with self.replica_lock:
+                # Generate unique replica ID
+                self.replica_counter += 1
+                timestamp = int(time.time())
+                replica_id = f"replica_{timestamp}_{self.replica_counter:03d}"
+                
+                # Create replica file name
+                if replica_name:
+                    filename = f"{replica_name}_{replica_id}.log"
+                else:
+                    filename = f"{replica_id}.log"
+                
+                replica_file = Path(replica_dir) / filename
+                
+                # Ensure directory exists
+                replica_file.parent.mkdir(parents=True, exist_ok=True)
+                
+                # Create replica handler
+                replica_handler = RotatingFileHandler(
+                    replica_file,
+                    maxBytes=max_size,
+                    backupCount=backup_count,
+                    encoding='utf-8'
                 )
-                replica_handler.setFormatter(formatter)
-            
-            # Add handler to logger
-            self.logger.addHandler(replica_handler)
-            
-            # Store handler for later removal
-            self.replica_handlers[replica_id] = replica_handler
-            
-            # Log replica creation
-            self.info(f"Log replica started: {replica_id} -> {replica_file}")
-            
-            return replica_id
+                
+                # Set log level
+                if isinstance(level, str):
+                    level = getattr(logging, level.upper())
+                replica_handler.setLevel(level)
+                
+                # Use same formatter as main logger for consistency
+                if self.logger.handlers:
+                    replica_handler.setFormatter(self.logger.handlers[0].formatter)
+                else:
+                    # Fallback formatter
+                    formatter = logging.Formatter(
+                        '%(asctime)s [%(levelname)-8s] %(name)s [PID:%(process)d] - %(message)s',
+                        datefmt='%Y-%m-%d %H:%M:%S'
+                    )
+                    replica_handler.setFormatter(formatter)
+                
+                # 关键修改：将handler添加到所有现有的UnifiedLogger实例
+                # 由于propagate=False，需要直接添加到每个logger实例才能捕获日志
+                for logger_instance in _global_loggers.values():
+                    logger_instance.logger.addHandler(replica_handler)
+                
+                # Store handler for later removal
+                self.replica_handlers[replica_id] = replica_handler
+                
+                # Log replica creation using print to avoid recursion
+                print(f"Log replica started: {replica_id} -> {replica_file}")
+                print(f"Replica will capture ALL logs from the entire application")
+                
+                return replica_id
+        except Exception as e:
+            # Log error using print to avoid recursion
+            print(f"Error starting log replica: {e}")
+            raise
     
     def stop_log_replica(self, replica_id: str):
         """
@@ -319,23 +402,31 @@ class UnifiedLogger:
         Args:
             replica_id: The replica ID returned by start_log_replica
         """
-        with self.replica_lock:
-            if replica_id in self.replica_handlers:
-                handler = self.replica_handlers[replica_id]
-                
-                # Remove handler from logger
-                self.logger.removeHandler(handler)
-                
-                # Close and flush handler
-                handler.flush()
-                handler.close()
-                
-                # Remove from active replicas
-                del self.replica_handlers[replica_id]
-                
-                self.info(f"Log replica stopped: {replica_id}")
-            else:
-                self.warning(f"Log replica not found: {replica_id}")
+        try:
+            with self.replica_lock:
+                if replica_id in self.replica_handlers:
+                    handler = self.replica_handlers[replica_id]
+                    
+                    # 关键修改：从所有UnifiedLogger实例中移除handler
+                    for logger_instance in _global_loggers.values():
+                        logger_instance.logger.removeHandler(handler)
+                    
+                    # Close and flush handler
+                    handler.flush()
+                    handler.close()
+                    
+                    # Remove from active replicas
+                    del self.replica_handlers[replica_id]
+                    
+                    # Log replica stop using print to avoid recursion
+                    print(f"Log replica stopped: {replica_id}")
+                    print(f"Replica no longer captures logs")
+                else:
+                    print(f"Log replica not found: {replica_id}")
+        except Exception as e:
+            # Log error using print to avoid recursion
+            print(f"Error stopping log replica: {e}")
+            raise
     
     def stop_all_replicas(self):
         """Stop all active log replicas"""
@@ -392,8 +483,8 @@ class UnifiedLogger:
             replica_files_with_time.sort(key=lambda x: x[0], reverse=True)
             
             if replica_files_with_time:
-                # Return the path of the newest file
-                return str(replica_files_with_time[0][1])
+                # Return the absolute path of the newest file
+                return str(replica_files_with_time[0][1].resolve())
             else:
                 return None
                 
@@ -405,6 +496,7 @@ class UnifiedLogger:
 
 # Global logger instance management
 _global_loggers: Dict[str, UnifiedLogger] = {}
+_global_logger_instance = None  # 全局唯一的logger实例
 # Redirection status marker
 _redirected = False
 # Global initialization status
@@ -417,9 +509,12 @@ def get_logger(name: str = "local_agent") -> UnifiedLogger:
     if not _initialized:
         _auto_setup_logging(True)
     
-    if name not in _global_loggers:
-        _global_loggers[name] = UnifiedLogger(name)
-    return _global_loggers[name]
+    # 返回全局唯一的logger实例，忽略name参数
+    global _global_logger_instance
+    if _global_logger_instance is None:
+        _global_logger_instance = UnifiedLogger(name)
+    
+    return _global_logger_instance
 
 
 def _auto_setup_logging(debug=False):

@@ -15,6 +15,7 @@ import subprocess
 logger = get_logger(__name__)
 
 ek_base_path = 'ek/Scripts/'
+ek_cmd_com = 'ek\Scripts\ek.exe'
 ek_python = ek_base_path + 'python.exe'
 ek_com = ek_base_path + 'ek.exe'
 
@@ -171,7 +172,7 @@ class EK:
 
         # Use enhanced subprocess execution tool to automatically record execution process and results
         return run_con_or_none(
-            ['cmd', '/c', 'echo', 'y', '|', f'{root_path}/{ek_com}', 'kill', '--all'],
+            ['cmd', '/c', 'echo', 'y', '|', f'{root_path}\{ek_cmd_com}', 'kill', '--all'],
             command_name='ek_kill',
             capture_output=True,
             text=True,

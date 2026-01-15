@@ -12,12 +12,11 @@ from typing import Dict, Any
 from ..config import get_config
 from ..logger import get_logger
 from local_agent.utils.http_client import http_post, http_put
-from ..utils.timer_utils import clear_timeout
+from ..utils.timer_utils import clear_timeout, set_timeout
 from ..core.global_cache import cache, set_agent_status, set_dmr_info, get_agent_status_by_key, get_dmr_upload_task_id, get_dmr_info, set_dmr_upload_task_id
 from ..core.constants import HARDWARE_INFO_TASK_ID
-from ..utils.timer_utils import set_timeout
 from ..core.app_update import update_app
-from ..core.host_init import VNC
+from ..core.host_init import VNC, EK
 from ..utils.message_tool import show_message_box
 
 router = APIRouter()
@@ -65,6 +64,7 @@ class CommonResponse(BaseModel):
     msg: str
 
 
+
 @router.post("/ek/start/result", response_model=CommonResponse)
 async def ek_start_result(request: EKResultRequest):
     """
@@ -90,6 +90,9 @@ async def ek_start_result(request: EKResultRequest):
         })
 
         if event.status_code == '1':
+            # 3 秒后弹出提示，ek启动失败，是否重试
+            set_timeout(3, ek_startup_failure)
+
             return CommonResponse(
                 code=0,
                 msg="success"
@@ -122,6 +125,25 @@ async def ek_start_result(request: EKResultRequest):
             code=1,
             msg=f"Processing failed: {str(e)}"
         )
+
+def ek_startup_failure():
+    """
+    EK startup failure prompt
+    """
+    result = show_message_box(
+        msg=f"EK startup failed. Do you want to retry?",
+        title="Prompt",
+        confirm_text="Retry",
+        cancel_show=True
+    )
+    logger.info(f"User choice: {result}")
+
+    EK.test_kill()
+    if result == "Retry":
+        EK.start_test()
+    else:
+        set_agent_status(test=False)
+
 
 
 @router.post("/ek/test/result", response_model=CommonResponse)
@@ -164,17 +186,9 @@ async def report_tool_result(request: EKResultRequest):
 
         set_agent_status(test=False)
         
-        result = show_message_box(
-            msg=f"The test has ended. Do you want to close the VNC connection",
-            title="prompt",
-            confirm_text="close",
-            cancel_show=True,
-            cancel_timeout=10
-        )
-        self.logger.info(f"User choice: {result}")
-
-        if result == "confirm":
-            VNC.disconnect()
+        test = get_agent_status_by_key('vnc')
+        if test:
+            set_timeout(5, is_close_vnc)
 
         return CommonResponse(
             code=res_data.get('code'),
@@ -189,6 +203,20 @@ async def report_tool_result(request: EKResultRequest):
         )
 
 
+def is_close_vnc():
+    result = show_message_box(
+        msg=f"The test has ended. Do you want to close the VNC connection",
+        title="Prompt",
+        confirm_text="Close",
+        cancel_show=True,
+        confirm_timeout=10
+    )
+    logger.info(f"User choice: {result}")
+
+    if result == "Close":
+        VNC.disconnect()
+        EK.test_kill()
+
 @router.get("/ek/log/last", response_model=CommonResponse)
 async def report_dmr_result(tc_id: str):
     """
@@ -197,6 +225,8 @@ async def report_dmr_result(tc_id: str):
     This interface waits for EK calls, and after being called, it reports the organized information to the server
     """
     file_path = logger.get_latest_replica_file()
+
+    logger.info(f"Latest log file path: {file_path}")
     if not file_path:
         return CommonResponse(
             code=1,
@@ -299,8 +329,9 @@ def upload_dmr():
         set_dmr_info(None)
         
         # Start WebSocket service
-        from ..utils.websocket_sync_utils import start_websocket_sync
-        start_websocket_sync(True)
+        if str(info.get('type')) == "0":
+            from ..utils.websocket_sync_utils import start_websocket_sync
+            start_websocket_sync(True)
 
         logger.info("Hardware info report successful")
         # Execute update compensation

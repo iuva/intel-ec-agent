@@ -2,8 +2,8 @@ from .global_cache import cache, get_agent_status, set_agent_status
 from ..utils.version_utils import get_app_version, is_newer_version
 from local_agent.utils.http_client import http_post
 from ..logger import get_logger
-from local_agent.core.ek import EK
-from local_agent.core.dmr import DMR
+from .ek import EK
+from .dmr import DMR
 from ..utils.timer_utils import set_timeout
 from .constants import HARDWARE_INFO_TASK_ID, APP_UPDATE_CACHE_KEY
 

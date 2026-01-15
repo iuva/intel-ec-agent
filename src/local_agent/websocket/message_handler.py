@@ -139,12 +139,17 @@ class WebSocketMessageHandler:
             details = message['details']
 
             log_id = self.logger.start_log_replica(replica_name = details['tc_id'])
+            self.logger.debug(f'start_log_replica, log_id: {log_id}')
 
             details['host_id'] = message['host_id']
             details['log_id'] = log_id
+            
+            self.logger.debug(f'ek test info, data: {details}')
             set_ek_test_info(details)
-            # Start EK test status tracking
-            ek_status_tracking()
+            # Start EK test status tracking in background without blocking
+            task = asyncio.create_task(ek_status_tracking())
+            self.ek_tracking_tasks.add(task)
+            task.add_done_callback(self.ek_tracking_tasks.discard)
         
         def stop_ek_test():
             """Stop EK test"""
@@ -164,62 +169,64 @@ class WebSocketMessageHandler:
             """Handle host offline notification"""
             stop_ek_test()
 
+        # Track EK status tracking tasks
+        self.ek_tracking_tasks = set()
+        
         # EK status tracking
         async def ek_status_tracking():
             """
             Start EK test status tracking
             """
+            from local_agent.logger import get_logger
+            logger = get_logger()
             try:
+                # Use global logger instance to avoid dependency on self
+                logger.info("Start EK test status tracking")
                 while True:
+                    status = get_agent_status()
                         
                     """Check VNC connection status"""
-                    if not get_agent_status_by_key("use"):
+                    if not status['use']:
                         return
 
                     is_con = VNC.is_connecting()
-
-                    status = get_agent_status_by_key("vnc")
-                    if status != is_con:
+                    if status['vnc'] != is_con:
                         res = http_post(url='/host/agent/vnc/report', data={'vnc_state': 1 if is_con else 2})
-                        
+                        set_agent_status(vnc = is_con)
                         res_data = res.get('data', {})
                         code = res_data.get('code', 0)
-
-                        if code == 200:
-                            set_agent_status(vnc = is_con)
-                            if is_con and get_agent_status_by_key("pre"):
-                                # Start EK test
-                                test_info = get_ek_test_info()
-                                response = http_post(
-                                    url=f"http://127.0.0.1:8001/test_start",
-                                    data=test_info
-                                )
-                                # EK.start_test(test_info['tc_id'], test_info['cycle_name'], test_info['user_name'])
-                                set_agent_status(pre = False)
-
-                            if not is_con and not get_agent_status_by_key("test"):
-                                # Whether operation is completely ended
-                                set_agent_status(use = False)
-                                # Execute update compensation
-                                log_id = get_ek_test_info()['log_id']
-                                self.logger.stop_log_replica(replica_id = log_id)
-                                update_app()
-                                return
-                        
-                        # If code is 53016 then disconnect all VNC connections
-                        elif code == 53016:
+                        if code == 53016:
                             stop_ek_test()
+                            return
+
+                    if status['pre']:
+                        if is_con:
+                            # Start EK test
+                            test_info = get_ek_test_info()
+                            response = http_post(
+                                url=f"http://127.0.0.1:8001/test_start",
+                                data=test_info
+                            )
+                            # EK.start_test(test_info['tc_id'], test_info['cycle_name'], test_info['user_name'])
+                            set_agent_status(pre = False)
+                    elif not status['test']:
+                        if not is_con:
+                            set_agent_status(use = False)
+                            # Execute update compensation
+                            log_id = get_ek_test_info()['log_id']
+                            logger.stop_log_replica(replica_id = log_id)
+                            update_app()
                             return
 
                     # Rest 10 seconds
                     await asyncio.sleep(10)
                     
             except asyncio.CancelledError:
-                self.logger.info("Main loop task cancelled")
+                logger.info("Main loop task cancelled")
             except Exception as e:
-                self.logger.error(f"Main loop error: {e}")
+                logger.error(f"Main loop error: {e}")
                 # Avoid recursive calls, record error but do not restart
-                self.logger.warning("Main loop error occurred, but avoiding recursion by not restarting application")
+                logger.warning("Main loop error occurred, but avoiding recursion by not restarting application")
         
 
 

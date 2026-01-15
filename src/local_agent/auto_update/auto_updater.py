@@ -212,6 +212,10 @@ class AutoUpdater:
             update_dir.mkdir(exist_ok=True)
             
             new_exe_path = update_dir / 'local_agent_new.exe'
+
+            # If the file exists, delete the old file first
+            if new_exe_path.exists():
+                new_exe_path.unlink()
             
             if not await self._download_file(full_download_url, new_exe_path):
                 # [Store] update failure time
