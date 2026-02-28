@@ -54,6 +54,7 @@ class APIServer:
             logger = get_logger("local_agent.api.access")
             
             logger.info(f"API request: {request.method} {request.url.path} from {client_host}")
+            logger.info(f"Result details: {request}")
             
             # [Process] request
             response = await call_next(request)
@@ -120,6 +121,39 @@ class APIServer:
         
         # [Register other] API [routes]
         app.include_router(router, prefix="/api/v1")
+        
+        # [Add] exception handler for validation errors (422)
+        from fastapi.exceptions import RequestValidationError
+        from fastapi.responses import JSONResponse
+        
+        @app.exception_handler(RequestValidationError)
+        async def validation_exception_handler(request: Request, exc: RequestValidationError):
+            # Log the validation error details including request body
+            logger = get_logger("local_agent.api.validation")
+            
+            # Log basic request info
+            client_host = request.client.host if request.client else "unknown"
+            logger.error(f"Validation error: {request.method} {request.url.path} from {client_host}")
+            
+            # Log validation errors
+            logger.error(f"Validation errors: {exc.errors()}")
+            
+            # Log request body if available
+            try:
+                body = await request.body()
+                if body:
+                    body_str = body.decode('utf-8', errors='ignore')
+                    if len(body_str) > 1000:
+                        body_str = body_str[:1000] + "... [truncated]"
+                    logger.error(f"Request body that caused validation error: {body_str}")
+            except Exception as e:
+                logger.warning(f"Failed to read request body for validation error: {e}")
+            
+            # Return standard 422 response
+            return JSONResponse(
+                status_code=422,
+                content={"detail": exc.errors()},
+            )
         
         # [Add] startup [and shutdown events]
         @app.on_event("startup")

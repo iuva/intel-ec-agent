@@ -8,10 +8,10 @@ from ..config import get_config
 from ..logger import get_logger
 from ..core.global_cache import cache, set_agent_status, get_agent_status_by_key, set_init_config, get_init_config
 from .constants import LOCAL_INFO_CACHE_KEY, HARDWARE_INFO_TASK_ID, HARDWARE_INFO_CYCLE_TASK_ID
-from local_agent.core.ek import EK
-from local_agent.core.dmr import DMR
+from .ek import EK
+from .dmr import DMR
 from ..utils.version_utils import get_app_version, is_newer_version
-from local_agent.utils.http_client import http_get, http_client
+from local_agent.utils.http_client import http_get, http_client, http_post
 from ..utils.environment import Environment
 
 # Delay import to avoid loop dependency
@@ -20,8 +20,8 @@ from ..utils.message_tool import show_message_box
 from ..utils.python_utils import PythonUtils  # Import PythonUtils class
 from ..utils.timer_utils import set_timeout
 from .vnc import VNC
-from local_agent.core.app_update import report_version
-from local_agent.core.tray_api import get_username
+from .app_update import report_version
+from .tray_api import get_username
 
 
 @dataclass
@@ -54,6 +54,26 @@ class HostInit:
         # python Initialize
         PythonUtils.get_python_check()
 
+        # Wait for message API service to be healthy (HTTP 200 response)
+        import time
+        import requests
+        
+        message_api_url = self.config.get('message_api_url') + "/health"
+        
+        while True:
+            try:
+                response = requests.get(message_api_url, timeout=5)
+                if response.status_code == 200:
+                    self.logger.info("Message API service is healthy, continuing...")
+                    break
+                else:
+                    self.logger.warning(f"Message API service returned status {response.status_code}, waiting...")
+            except Exception as e:
+                self.logger.warning(f"Message API service not available: {e}, waiting...")
+            
+            # Wait 30 seconds before next check
+            time.sleep(30)
+
         # Get host info and encapsulate into object
         # Unified username identification mechanism to avoid conflicts caused by inconsistent usernames in service mode
         username = get_username()
@@ -75,6 +95,9 @@ class HostInit:
 
         # Timed get hardware info
         self.timing_hardware_info(start=True)
+
+        
+        # res = http_post(url="/host/agent/hardware/report", data = {'name': 'dmr_config_schema', 'type': '0', 'dmr_config': {'revision': '0.1.1', 'mainboard': {'plt_meta_data': {'platform': 'OKS_DMR', 'label_plt_cfg': None}, 'board': {'board_meta_data': {'board_name': 'JohnsonCity1SPCRP', 'uxi_topology': '1S', 'host_name': None, 'host_ip': None}, 'baseboard': [], 'lsio': {'usb_disc_installed': False, 'network_installed': False, 'nvme_installed': False, 'keyboard_installed': False, 'mouse_installed': False}, 'peripheral': {'itp_installed': False, 'usb_dbc_installed': False, 'controlbox_installed': False, 'flash_programmer_installed': False, 'display_installed': False, 'jumpers': []}}, 'misc': {'installed_os': [], 'bmc_version': None, 'bmc_ip': None, 'cpld_version': None}}, 'hsio': [{'hsio': {'hsio_meta_data': {'cxl_por': 'unknown', 'cxl_installed_num': 0, 'cxl_installed_tpye': None, 'cxl_mixed_device_type': False, 'cxl_switch': 'unknown', 'didvid_list': []}, 'slot': []}}], 'memory': [{'memory': {'memory_meta_data': {'dimm_type': 'RDIMM', 'platform_type': 'GNRSP', 'memory_por_id': {'value': 'Unknown Config'}, 'total_memory_size': {'value': 0}, 'mixed_dimm': {'is_mixed': True, 'common_info': '', 'special_info': ''}}, 'channel': []}}], 'security': {'security': {'Tpm': [], 'CoinBattery': []}}, 'soc': [{'soc': {'meta_data': {'soc_name': {'value': None}, 'soc_id': None, 'cpu_id': None, 'chop_type': 'UCC', 'stepping': None, 'qdf': None}, 'soc_feature': {'sgx': None, 'mktme': False, 'tdx': False, 'vab': False, 'cpu_attestation': False, 'mini_dpe': False, 'sstpp': False, 'ras_level': None, 'memory_channel': None, 'ddr5_freq': None, 'mrdimm_freq': None}, 'comp_die': [], 'io_die': []}}]}})
         
         # from ..utils.websocket_sync_utils import start_websocket_sync
         # start_websocket_sync(True)
@@ -89,7 +112,8 @@ class HostInit:
 
         config_data = {}
         if str(init_code) == '200':
-            configs = init_data.get('configs', [])
+            conf_data = init_data.get('data', {})
+            configs = conf_data.get('configs', [])
             for config in configs:
                 key = config.get('conf_key', '')
                 config_data[key] = config
@@ -112,12 +136,15 @@ class HostInit:
             from ..utils.websocket_sync_utils import stop_websocket_sync
             stop_websocket_sync()
             
-
         set_agent_status(sut=True)
-        DMR.get_hardware_info()
-        self.logger.info("Obtained hardware info - call completed")
+        if not DMR.is_running():
+            import time
+            DMR.kill_dmr()
+            time.sleep(10)
+            DMR.get_hardware_info()
+            self.logger.info("Obtained hardware info - call completed")
         # Add timed task, execute again after 15 minutes
-        task_id = set_timeout(900, self.get_hardware_info)
+        task_id = set_timeout(30, self.get_hardware_info)
         # Cache timed task id
         cache.set(HARDWARE_INFO_TASK_ID, task_id)
 
@@ -127,6 +154,11 @@ class HostInit:
         Timed hardware information retrieval
         """
 
+
+        # Check version when not starting
+        if not start:
+            self.check_versions()
+            
         # Get hardware info
         self.get_hardware_info()
 
@@ -138,10 +170,6 @@ class HostInit:
         task_id = set_timeout(cycle_second * 60, self.timing_hardware_info)
         # Cache timed task id
         cache.set(HARDWARE_INFO_CYCLE_TASK_ID, task_id)
-
-        # Check version when not starting
-        if not start:
-            self.check_versions()
 
 
     def check_versions(self):

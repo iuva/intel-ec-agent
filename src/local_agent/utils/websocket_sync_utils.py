@@ -30,7 +30,10 @@ class WebSocketSyncUtils:
                 # If there's a running event loop, use create_task
                 async def _stop():
                     manager = await get_websocket_manager()
-                    return await manager.stop()
+                    if manager.is_running:
+                        return await manager.stop()
+                    else:
+                        return True
                 
                 # Create task in current event loop
                 task = asyncio.create_task(_stop())

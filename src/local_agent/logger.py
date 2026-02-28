@@ -154,14 +154,25 @@ class UnifiedLogger:
         # File handler - support log rotation
         log_file.parent.mkdir(parents=True, exist_ok=True)
         
-        file_handler = RotatingFileHandler(
-            log_file,
-            maxBytes=log_max_size,
-            backupCount=log_backup_count,
-            encoding='utf-8'
-        )
-        file_handler.setLevel(log_level)
-        file_handler.setFormatter(formatter)
+        # 确保日志文件存在且可写入
+        try:
+            log_file.touch(exist_ok=True)
+        except:
+            pass
+        
+        # 使用全局文件handler，避免重复创建
+        global _global_file_handler
+        if _global_file_handler is None:
+            _global_file_handler = RotatingFileHandler(
+                str(log_file.absolute()),  # 使用绝对路径
+                maxBytes=log_max_size,
+                backupCount=log_backup_count,
+                encoding='utf-8'
+            )
+            _global_file_handler.setLevel(log_level)
+            _global_file_handler.setFormatter(formatter)
+        
+        file_handler = _global_file_handler
         
         # Console handler - for viewing output during debug
         console_handler = logging.StreamHandler(sys.stdout)
@@ -355,7 +366,7 @@ class UnifiedLogger:
                 
                 # Create replica handler
                 replica_handler = RotatingFileHandler(
-                    replica_file,
+                    str(replica_file.absolute()),  # 使用绝对路径
                     maxBytes=max_size,
                     backupCount=backup_count,
                     encoding='utf-8'
@@ -501,6 +512,8 @@ _global_logger_instance = None  # 全局唯一的logger实例
 _redirected = False
 # Global initialization status
 _initialized = False
+# Global file handler to prevent duplicate handlers
+_global_file_handler = None
 
 
 def get_logger(name: str = "local_agent") -> UnifiedLogger:

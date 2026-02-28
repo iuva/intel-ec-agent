@@ -13,6 +13,9 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 from local_agent.core.ek import EK
 from typing import Dict, Any
+from ..utils.version_utils import get_app_version
+from ..utils.subprocess_utils import run_con_or_none, run_async, run_as_admin
+import subprocess
 
 # Import local message window component
 from .message_window import create_message_window, MessageResult
@@ -75,6 +78,7 @@ class MessageAPIService:
                 "status": "healthy",
                 "service": "Message Box API Service",
                 "port": self.port,
+                "version": get_app_version(),
                 "message_type": "local_window"
             }
         
@@ -178,7 +182,53 @@ class MessageAPIService:
             )
         
         
+        @self.app.get("/get_sut", response_model=MessageResponse)
+        async def get_sut() -> MessageResponse:
+            """
+            Because EK program has user interface, this interface should be called using service for startup
+            """
+
+            run_async(['dmr-config', 'sut'])
+
+
+            return MessageResponse(
+                success=True,
+                user_choice="confirm"
+            )
+                
+        @self.app.get("/get_sut_status", response_model=MessageResponse)
+        async def get_sut_status() -> MessageResponse:
+            res = run_con_or_none(
+                        ['dmr-config', 'status', '--json'],
+                        command_name='dmr-config_status',
+                        capture_output=True,
+                        text=True,
+                        timeout=100  # 10 second timeout
+                    )
+            self.logger.info(type(res))
+            return MessageResponse(
+                success=True,
+                user_choice=res
+            )
+                
+        @self.app.get("/kill_sut", response_model=MessageResponse)
+        async def kill_sut() -> MessageResponse:
+            
+            run_as_admin(
+                ['taskkill', '/f', '/im', 'dmr-config.exe'],
+                command_name='taskkill_dmr-config.exe',
+                capture_output=True,
+                text=True,
+                timeout=100  # 10 second timeout
+            )
+
+            return MessageResponse(
+                success=True,
+                user_choice="confirm"
+            )
         
+        
+
         
         @self.app.get("/agent_update", response_model=MessageResponse)
         async def agent_update(cmd: str) -> MessageResponse:

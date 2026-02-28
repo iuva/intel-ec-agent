@@ -73,8 +73,6 @@ async def ek_start_result(request: EKResultRequest):
     
     """
     try:
-        
-        logger.info(f"Start result: {request}")
 
         event = request.event
 
@@ -154,8 +152,6 @@ async def report_tool_result(request: EKResultRequest):
     This interface waits for EK calls, and after being called, it reports the organized information to the server
     """
     try:
-        
-        logger.info(f"EK result details: {request}")
 
         event = request.event
 
@@ -250,9 +246,6 @@ async def report_dmr_result(request: DMRResultPayload):
     This interface waits for EK calls, and after being called, it reports the organized information to the server
     """
     try:
-
-        # Record detailed EK result info
-        logger.info(f"DMR result details: {request}")
 
         # Whether successful
         if request.event.status_code == "0":

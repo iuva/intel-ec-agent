@@ -2,8 +2,12 @@
 System tray related APIs
 """
 import requests
+from ..logger import get_logger
+from ..config import get_config
 
-api_host = "http://127.0.0.1:8001"
+logger = get_logger()
+
+api_host = get_config().get('message_api_url')
 
 def get_username() -> str:
     """Get current username"""
@@ -21,7 +25,7 @@ def get_username() -> str:
         return f"{user_domain.lower()}\\{user_name}"
 
     except Exception as e:
-        self.logger.error(f"Unified username recognition failed: {e}")
+        logger.error(f"Unified username recognition failed: {e}")
         # Fall back to default method on failure
         import getpass
         return getpass.getuser()

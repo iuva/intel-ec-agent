@@ -12,14 +12,16 @@ import logging
 from pathlib import Path
 from typing import Optional, Dict, Any
 
+from local_agent.config import get_config
+
 
 class MessageTool:
     """Message utility class, calls message box service through HTTP API"""
     
-    def __init__(self, api_url: str = "http://127.0.0.1:8001"):
+    def __init__(self, api_url: str = None):
         """Initialize message utility class"""
         self.logger = logging.getLogger(__name__)
-        self.api_url = api_url
+        self.api_url = api_url if api_url else get_config().get('message_api_url')
         
         # Get current program directory
         self.current_dir = Path(sys.executable).parent if hasattr(sys, 'frozen') else Path.cwd()

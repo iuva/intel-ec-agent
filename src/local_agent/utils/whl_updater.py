@@ -184,12 +184,10 @@ class WhlUpdater:
             # Build pip install command (optimize network configuration)
             pip_command = [
                 python_path, "-m", "pip", "install", 
-                "--upgrade", "--force-reinstall",
+                "--force-reinstall",
                 "--timeout", "120",  # Connection timeout 120 seconds
                 "--retries", "5",     # Increase retry times
                 "--default-timeout", "1200",  # Overall operation timeout 1200 seconds (20 minutes)
-                "--no-cache-dir",     # Disable cache to avoid cache issues
-                "--disable-pip-version-check",  # Disable version check to reduce network requests
                 "-i", "https://intelpypi.intel.com/root/pypi/+simple/",
                 str(whl_path)
             ]
@@ -930,11 +928,11 @@ def update_from_whl_sync(whl_url: str, python_path: str) -> dict:
         
         # After download complete, [perform] WHL file [integrity] validation [and rename] check
         original_filename = whl_path.name
-        logger.info(f"Download completed，Original filename: {original_filename}")
+        logger.info(f"Download completed, Original filename: {original_filename}")
         
         # Validate WHL file [integrity]
         if not updater._validate_whl_integrity(whl_path):
-            logger.error("❌ WHL file integrity verification failed，File may be corrupted or incomplete")
+            logger.error("❌ WHL file integrity verification failed, File may be corrupted or incomplete")
             # Delete [corrupted] file
             try:
                 whl_path.unlink()

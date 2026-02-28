@@ -41,6 +41,7 @@ class Config:
             # WebSocket Configuration
             'websocket_enabled': True,
             'websocket_url': 'ws://10.239.168.44:8000/api/v1/ws/host/host',
+            # 'websocket_url': 'ws://10.4.145.107:31001/api/v1/ws/host/host',
             'websocket_reconnect_interval': 10,  # Reconnect interval (seconds)
             'websocket_timeout': 30,  # Timeout time (seconds)
             
@@ -62,7 +63,11 @@ class Config:
             
             # HTTP Client Configuration
             'http_base_url': 'http://10.239.168.44:8000/api/v1',  # HTTP request base URL
+            # 'http_base_url': 'http://10.4.145.107:31001/api/v1',  # HTTP request base URL
             'http_timeout': 60,  # HTTP request timeout time (seconds)
+            
+            # Message API Configuration
+            'message_api_url': 'http://127.0.0.1:8001',  # Message box API service URL
         })
     
     def _load_environment(self):

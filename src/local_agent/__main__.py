@@ -12,6 +12,7 @@ import psutil
 import ctypes
 import platform
 import threading
+import argparse
 from pathlib import Path
 
 # Import enhanced subprocess utility
@@ -24,9 +25,22 @@ from local_agent.core.application import run_application
 from local_agent.logger import get_logger, setup_global_logging, redirect_all_output
 from local_agent.ui.message_api import run_message_api_service
 from local_agent.ui.system_tray import start_system_tray
+from local_agent.config import get_config
 
 # Import file utility class
 from local_agent.utils.file_utils import FileUtils
+
+
+def parse_arguments():
+    """Parse command line arguments"""
+    parser = argparse.ArgumentParser(description='Local Agent Application')
+    
+    # Add service mode parameter
+    parser.add_argument('--service', '-s', 
+                       action='store_true',
+                       help='Run in service mode (Process B) - default is UI mode (Process A)')
+    
+    return parser.parse_args()
 
 
 def extract_of_scripts(file_name: str, overwrite: bool = False):
@@ -65,60 +79,81 @@ def check_service_exists(service_name="LocalAgentService"):
             return "RUNNING" in result.stdout
         else:
             return False
-    except:
-        return False
-
-
-def check_agent_process_running():
-    """Check if agent process is running (enhanced version: exclude system service processes)"""
-    try:
-        import psutil
-        current_pid = os.getpid()
-        running_processes = []
-        
-        for proc in psutil.process_iter(['pid', 'name', 'ppid', 'create_time']):
-            try:
-                # Safely get process info, handle None values
-                proc_info = proc.info
-                proc_pid = proc_info.get('pid')
-                proc_name = proc_info.get('name', '') or ''
-                proc_name = str(proc_name).lower() if proc_name else ''
-                proc_ppid = proc_info.get('ppid')  # Parent process ID
-                proc_create_time = proc_info.get('create_time')  # Process start time
-                
-                # Skip current process
-                if proc_pid == current_pid:
-                    continue
-                
-                # Check if it's a local_agent process
-                if proc_name and 'local_agent' in proc_name:
-                    # Check if it's a system service process (parent process is service manager)
-                    try:
-                        parent_process = psutil.Process(proc_ppid)
-                        parent_name = parent_process.name().lower()
-                        service_processes = ['services.exe', 'svchost.exe', 'nssm.exe']
-                        
-                        # If it's a system service process, skip counting
-                        if any(proc in parent_name for proc in service_processes):
-                            continue
-                    except:
-                        pass
-                    
-                    # If it's a normal local_agent process, add to list
-                    running_processes.append(proc_pid)
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                continue
-        
-        if running_processes:
-            logger = get_logger(__name__)
-            logger.info(f"[INFO] Detected {len(running_processes)} running local_agent processes (PIDs: {running_processes})")
-            return True
-        
-        return False
     except Exception as e:
         logger = get_logger(__name__)
-        logger.warning(f"[WARN] Error occurred while checking processes: {e}")
+        logger.warning(f"[WARN] Error checking service status: {e}")
         return False
+
+
+def check_service_startup_type(service_name="LocalAgentService"):
+    """Check if service startup type is AUTO"""
+    try:
+        result = run_with_logging(
+            ['sc', 'qc', service_name],
+            command_name="check_service_startup_type",
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        
+        if result.returncode == 0:
+            # Check if startup type is AUTO
+            return "AUTO_START" in result.stdout or "AUTO" in result.stdout
+        else:
+            return False
+    except Exception as e:
+        logger = get_logger(__name__)
+        logger.warning(f"[WARN] Error checking service startup type: {e}")
+        return False
+
+
+def verify_and_repair_service():
+    """Verify system service registration and startup type, repair if necessary"""
+    logger = get_logger(__name__)
+    service_name = "LocalAgentService"
+    
+    # Check if service exists
+    if not check_service_exists(service_name):
+        logger.error(f"[ERROR] System service {service_name} does not exist")
+        logger.info("[INFO] Attempting to reinstall service...")
+        
+        # Stop and delete service if exists but in bad state
+        try:
+            run_with_logging(['sc', 'stop', service_name], timeout=30)
+            run_with_logging(['sc', 'delete', service_name], timeout=30)
+        except:
+            pass
+        
+        # Reinstall service
+        if install_service_via_nssm():
+            logger.info("[INFO] Service reinstalled successfully")
+            return True
+        else:
+            logger.error("[ERROR] Failed to reinstall service")
+            return False
+    
+    # Check if startup type is AUTO
+    if not check_service_startup_type(service_name):
+        logger.warning(f"[WARN] Service {service_name} startup type is not AUTO")
+        logger.info("[INFO] Setting service startup type to AUTO...")
+        
+        try:
+            result = run_with_logging(
+                ['sc', 'config', service_name, 'start=', 'auto'],
+                timeout=30
+            )
+            if result.returncode == 0:
+                logger.info("[INFO] Service startup type set to AUTO successfully")
+                return True
+            else:
+                logger.error("[ERROR] Failed to set service startup type to AUTO")
+                return False
+        except Exception as e:
+            logger.error(f"[ERROR] Error setting service startup type: {e}")
+            return False
+    
+    logger.info("[INFO] System service verification passed")
+    return True
 
 
 def install_service_via_nssm():
@@ -164,9 +199,9 @@ def install_service_via_nssm():
         
         service_name = "LocalAgentService"
         
-        # Install service
+        # Install service with --service parameter
         result = run_with_logging(
-            [nssm_path, 'install', service_name, exe_path],
+            [nssm_path, 'install', service_name, exe_path, '--service'],
             command_name="nssm_install_service",
             capture_output=True, 
             text=True, 
@@ -226,154 +261,6 @@ def auto_register_service():
         logger.info("[INFO] Will run in normal mode, recommend running installation script manually for service registration")
         return False
 
-
-def check_if_service_mode():
-    """Check if running in service mode - enhanced version (fixes service detection issues after update)"""
-    try:
-        # Get logger instance
-        logger = get_logger(__name__)
-        
-        # Critical fix: In post-update scenarios, prioritize checking if Windows service actually exists
-        # If service has been deleted, even if other detection methods return True, should return False
-        if platform.system() == "Windows":
-            try:
-                # Check if Windows service actually exists and is running
-                service_exists = check_service_exists()
-                if not service_exists:
-                    logger.info("[INFO] Windows service does not exist or is not running, forcing return to normal mode")
-                    return False
-            except Exception as e:
-                logger.warning(f"[WARN] Checking Windows service status failed: {e}")
-        
-        # Method 1: Check if parent process is service manager (most reliable detection)
-        try:
-            parent = psutil.Process(os.getppid())
-            parent_name = parent.name().lower()
-            service_processes = ['services.exe', 'svchost.exe', 'nssm.exe', 'winlogon.exe']
-            
-            # If parent process is service manager, directly consider it as service mode
-            if any(proc in parent_name for proc in service_processes):
-                logger.info(f"[INFO] Detected service manager parent process: {parent_name}")
-                return True
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
-            pass
-        
-        # Method 2: Check system service environment variable (standard service mode detection)
-        if os.environ.get('SERVICE_NAME') == 'local_agent':
-            logger.info("[INFO] Detected system service environment variable")
-            return True
-        
-        # Method 3: Check environment variable (custom service mode flag)
-        service_env = os.environ.get('LOCAL_AGENT_SERVICE_MODE', '')
-        if service_env == 'true':
-            logger.info("[INFO] Detected custom service mode environment variable")
-            return True
-            
-        # Method 4: Check if command line parameters contain service-related flags
-        cmdline = ' '.join(sys.argv).lower()
-        service_flags = ['--service', '-s', '/service']
-        if any(flag in cmdline for flag in service_flags):
-            logger.info("[INFO] Detected service mode command line parameter")
-            return True
-        
-        # Method 5: Check if started by Windows service manager
-        # Service mode typically has no visible console window
-        if platform.system() == "Windows":
-            try:
-                console_window = ctypes.windll.kernel32.GetConsoleWindow()
-                # If console window is invisible and not started by user interaction, may be service mode
-                if console_window and ctypes.windll.user32.IsWindowVisible(console_window) == 0:
-                    # Further validate: check if started by service manager
-                    try:
-                        parent = psutil.Process(os.getppid())
-                        parent_name = parent.name().lower()
-                        if any(proc in parent_name for proc in ['services.exe', 'svchost.exe']):
-                            logger.info(f"[INFO] Detected service mode feature: hidden window + service manager parent process")
-                            return True
-                    except:
-                        pass
-            except:
-                pass
-        
-        # Method 6: Check if current process was started by system service (new key detection)
-        # When system service starts process, some characteristics of the process will be different
-        if platform.system() == "Windows":
-            try:
-                # Check process token info, service processes typically have specific permissions
-                import ctypes.wintypes
-                
-                # Get current process token
-                token_handle = ctypes.wintypes.HANDLE()
-                if ctypes.windll.advapi32.OpenProcessToken(
-                    ctypes.windll.kernel32.GetCurrentProcess(), 
-                    0x0008,  # TOKEN_QUERY
-                    ctypes.byref(token_handle)
-                ):
-                    # Check token type
-                    token_type = ctypes.wintypes.DWORD()
-                    token_type_size = ctypes.wintypes.DWORD()
-                    
-                    if ctypes.windll.advapi32.GetTokenInformation(
-                        token_handle,
-                        1,  # TokenType
-                        ctypes.byref(token_type),
-                        ctypes.sizeof(token_type),
-                        ctypes.byref(token_type_size)
-                    ):
-                        # If token type is TokenImpersonation, may be service process
-                        if token_type.value == 2:  # TokenImpersonation
-                            logger.info("[INFO] Detected service process token feature")
-                            ctypes.windll.kernel32.CloseHandle(token_handle)
-                            return True
-                    
-                    ctypes.windll.kernel32.CloseHandle(token_handle)
-            except:
-                pass
-        
-        # Method 7: Check if current process is running in service session (Windows service specific session)
-        if platform.system() == "Windows":
-            try:
-                # Get current process session ID
-                process_id = ctypes.windll.kernel32.GetCurrentProcessId()
-                session_id = ctypes.wintypes.DWORD()
-                
-                if ctypes.windll.kernel32.ProcessIdToSessionId(process_id, ctypes.byref(session_id)):
-                    # Service processes typically run in Session 0 (non-interactive session)
-                    if session_id.value == 0:
-                        logger.info("[INFO] Detected service session feature (session 0)")
-                        return True
-            except:
-                pass
-        
-        # Method 8: Check if started through service control manager
-        # When process is started by SCM, there will be specific startup context
-        if platform.system() == "Windows":
-            try:
-                # Check if current process is running in service context
-                # By checking if process has service-specific security identifiers
-                import win32ts  # Requires pywin32
-                
-                # Get current session info
-                session_id = win32ts.WTSGetActiveConsoleSessionId()
-                # If current process is not in console session, may be service process
-                current_session = win32ts.ProcessIdToSessionId(os.getpid())
-                if current_session != session_id:
-                    logger.info("[INFO] Detected non-console session feature")
-                    return True
-            except:
-                # If pywin32 is not available, skip this detection
-                pass
-        
-        # By default, return False to ensure service registration logic works properly
-        # Only return True when service mode features are explicitly detected
-        logger.info("[INFO] No service mode features detected, will run in normal mode")
-        return False
-        
-    except Exception as e:
-        # When exception occurs, return False for safety to ensure service registration logic can execute
-        logger = get_logger(__name__)
-        logger.warning(f"[WARN] Service mode detection exception: {e}")
-        return False
 
 
 def hide_console_window():
@@ -445,7 +332,7 @@ def run_a_process():
             time.sleep(0.5)
     
     logger.info("[INFO] A process startup completed: system tray and FastAPI service started")
-    logger.info("[INFO] Message box API service address: http://127.0.0.1:8001")
+    logger.info(f"[INFO] Message box API service address: {get_config().get('message_api_url')}")
     logger.info("[INFO] A process will run in background, providing message box support for system service")
     
     # Keep process running, but hide console window
@@ -492,21 +379,31 @@ def main():
     """Main function - dual process version"""
     
     # Parse command line parameters
-    import argparse
-    parser = argparse.ArgumentParser(description='agent')
-    parser.add_argument('mode', nargs='?', default='normal', help='Running mode: normal or debug')
-    args = parser.parse_args()
+    args = parse_arguments()
     
-    # Determine if in debug mode
+    # Determine if in debug mode (for backward compatibility)
     debug_mode = False
-    if args.mode and hasattr(args.mode, 'lower'):
+    if hasattr(args, 'mode') and args.mode and hasattr(args.mode, 'lower'):
         debug_mode = args.mode.lower() == 'debug'
     
     # Initialize unified logging system, pass debug parameter
     setup_global_logging(debug=debug_mode)
     redirect_all_output()
     
-    logger = get_logger(__name__)
+    logger = get_logger()
+    
+    # Log command line arguments
+    logger.info(f"[INFO] Command line arguments: {sys.argv}")
+    logger.info(f"[INFO] Parsed arguments: service={args.service}")
+    
+    # Determine running mode based on command line arguments
+    # Simple logic: if --service is specified, run in service mode, otherwise UI mode
+    if args.service:
+        logger.info("[INFO] Starting in service mode (Process B) based on --service argument")
+        is_service_mode = True
+    else:
+        logger.info("[INFO] Starting in UI mode (Process A) - default mode")
+        is_service_mode = False
     
     # Hide console window in non-debug mode
     if not debug_mode and platform.system() == "Windows":
@@ -577,9 +474,6 @@ def main():
         if len(existing_processes) > 0:
             logger.info(f"[INFO] Detected {len(existing_processes)} other local_agent processes")
             
-            # Check if currently running in service mode
-            is_service_mode = check_if_service_mode()
-            
             if is_service_mode:
                 logger.info("[INFO] Currently in service mode (B process), allowing coexistence with A process")
                 # B process (service mode) can coexist with A process
@@ -608,12 +502,51 @@ def main():
         logger.warning(f"[WARN] Multi-process detection failed: {e}")
     
     try:
-        # Detect running mode
-        is_service_mode = check_if_service_mode()
+        # Use the is_service_mode determined from command line arguments or auto-detection
         
         if not is_service_mode:
             logger.info("[INFO] Detected user startup mode, starting A process (user process)...")
             
+            # Step 1: Verify and repair system service before starting A process
+            logger.info("[INFO] Verifying system service registration and startup type...")
+            if not verify_and_repair_service():
+                logger.error("[ERROR] System service verification failed, A process cannot continue")
+                logger.info("[INFO] Please check system service status manually and restart A process")
+                sys.exit(1)
+            
+            # Step 1.5: Configure UI process auto-start via Windows Task Scheduler
+            logger.info("[INFO] Configuring UI process auto-start via Windows Task Scheduler...")
+            try:
+                from local_agent.utils.task_scheduler import configure_ui_auto_start
+                if configure_ui_auto_start():
+                    logger.info("[INFO] UI process auto-start configuration completed successfully")
+                else:
+                    logger.warning("[WARN] UI process auto-start configuration failed, but continuing startup")
+            except Exception as e:
+                logger.warning(f"[WARN] Failed to configure UI process auto-start: {e}")
+                logger.info("[INFO] Continuing startup despite auto-start configuration failure")
+            
+            # Step 2: Check if there's already a running A process with working 8001 port
+            logger.info("[INFO] Checking for existing A process with working 8001 port...")
+            try:
+                import socket
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(3)
+                result = sock.connect_ex(('127.0.0.1', 8001))
+                sock.close()
+                
+                if result == 0:
+                    logger.info("[INFO] 8001 port is accessible, indicating A process is already running")
+                    logger.info("[INFO] Current A process will exit to avoid duplication")
+                    sys.exit(0)
+                else:
+                    logger.info("[INFO] 8001 port is not accessible, continuing with A process startup")
+                    
+            except Exception as e:
+                logger.warning(f"[WARN] Port 8001 detection failed: {e}")
+                logger.info("[INFO] Continuing with A process startup")
+            
+            # Step 3: Extract required files
             # Regardless of whether service is installed, first try to automatically extract nssm.exe
             extract_success, extract_message = extract_of_scripts('nssm.exe')
 

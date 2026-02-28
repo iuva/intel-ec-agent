@@ -19,6 +19,7 @@ from ..core.constants import APP_UPDATE_CACHE_KEY
 from ..core.app_update import update_app
 from ..core.ek import EK
 from ..core.vnc import VNC
+from ..config import get_config
 from local_agent.utils.http_client import http_post
 
 
@@ -204,7 +205,7 @@ class WebSocketMessageHandler:
                             # Start EK test
                             test_info = get_ek_test_info()
                             response = http_post(
-                                url=f"http://127.0.0.1:8001/test_start",
+                                url=f"{get_config().get('message_api_url')}/test_start",
                                 data=test_info
                             )
                             # EK.start_test(test_info['tc_id'], test_info['cycle_name'], test_info['user_name'])
