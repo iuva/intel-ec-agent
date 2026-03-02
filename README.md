@@ -6,6 +6,12 @@ Local Agent 是一个基于Python开发的本地代理服务应用，提供设�
 
 ## 🚀 快速开始
 
+### 本地 debug 运行
+```bash
+python -m local_agent --debug
+```
+
+
 ### 唯一正确的启动方式
 
 根据项目规则，唯一正确的启动方式为：

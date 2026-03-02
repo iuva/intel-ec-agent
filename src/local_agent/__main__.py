@@ -40,6 +40,11 @@ def parse_arguments():
                        action='store_true',
                        help='Run in service mode (Process B) - default is UI mode (Process A)')
     
+    # Add debug mode parameter
+    parser.add_argument('--debug', '-d', 
+                       action='store_true',
+                       help='Run in debug mode for local development - starts both A and B processes')
+    
     return parser.parse_args()
 
 
@@ -381,10 +386,8 @@ def main():
     # Parse command line parameters
     args = parse_arguments()
     
-    # Determine if in debug mode (for backward compatibility)
-    debug_mode = False
-    if hasattr(args, 'mode') and args.mode and hasattr(args.mode, 'lower'):
-        debug_mode = args.mode.lower() == 'debug'
+    # Determine if in debug mode
+    debug_mode = args.debug if hasattr(args, 'debug') else False
     
     # Initialize unified logging system, pass debug parameter
     setup_global_logging(debug=debug_mode)
@@ -394,7 +397,28 @@ def main():
     
     # Log command line arguments
     logger.info(f"[INFO] Command line arguments: {sys.argv}")
-    logger.info(f"[INFO] Parsed arguments: service={args.service}")
+    logger.info(f"[INFO] Parsed arguments: service={args.service}, debug={debug_mode}")
+    
+    # If debug mode, run both A and B processes
+    if debug_mode:
+        logger.info("[INFO] Starting in DEBUG mode - running both A and B processes")
+        import threading
+        
+        def run_b_thread():
+            """Run B process in separate thread"""
+            run_b_process()
+        
+        # Start B process in a separate thread
+        b_thread = threading.Thread(target=run_b_thread, name="BProcess", daemon=True)
+        b_thread.start()
+        
+        # Run A process in main thread
+        logger.info("[INFO] Starting A process in main thread...")
+        run_a_process()
+        
+        # Wait for B thread to complete
+        b_thread.join()
+        return
     
     # Determine running mode based on command line arguments
     # Simple logic: if --service is specified, run in service mode, otherwise UI mode

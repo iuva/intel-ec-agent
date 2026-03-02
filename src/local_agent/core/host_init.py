@@ -90,8 +90,8 @@ class HostInit:
         self.init_config()
 
         # Version verification, only check when running as exe
-        if not Environment.is_development():
-            self.check_versions()
+        # if not Environment.is_development():
+        self.check_versions()
 
         # Timed get hardware info
         self.timing_hardware_info(start=True)
