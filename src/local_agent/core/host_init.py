@@ -13,12 +13,13 @@ from .dmr import DMR
 from ..utils.version_utils import get_app_version, is_newer_version
 from local_agent.utils.http_client import http_get, http_client, http_post
 from ..utils.environment import Environment
+from ..core.auth import update_token
 
 # Delay import to avoid loop dependency
 # from local_agent.utils.whl_updater import update_from_whl_sync
 from ..utils.message_tool import show_message_box
 from ..utils.python_utils import PythonUtils  # Import PythonUtils class
-from ..utils.timer_utils import set_timeout
+from ..utils.timer_utils import set_timeout, clear_timeout, set_interval
 from .vnc import VNC
 from .app_update import report_version
 from .tray_api import get_username
@@ -87,6 +88,9 @@ class HostInit:
         # Store host info in cache
         cache.set(LOCAL_INFO_CACHE_KEY, local_info)
 
+        # Update token every 23.8 hours
+        set_interval(23.8 * 60 * 60, update_token)
+
         self.init_config()
 
         # Version verification, only check when running as exe
@@ -136,17 +140,23 @@ class HostInit:
             from ..utils.websocket_sync_utils import stop_websocket_sync
             stop_websocket_sync()
             
-        set_agent_status(sut=True)
-        if not DMR.is_running():
-            import time
-            DMR.kill_dmr()
-            time.sleep(10)
-            DMR.get_hardware_info()
-            self.logger.info("Obtained hardware info - call completed")
+            set_agent_status(sut=True)
+            if not DMR.is_running():
+                import time
+                DMR.kill_dmr()
+                time.sleep(10)
+                DMR.get_hardware_info()
+                self.logger.info("Obtained hardware info - call completed")
+
+        old_task_id = cache.get(HARDWARE_INFO_TASK_ID)
+
         # Add timed task, execute again after 15 minutes
         task_id = set_timeout(30, self.get_hardware_info)
         # Cache timed task id
         cache.set(HARDWARE_INFO_TASK_ID, task_id)
+
+        if old_task_id:
+            clear_timeout(old_task_id)
 
 
     def timing_hardware_info(self, start=False):
@@ -154,17 +164,19 @@ class HostInit:
         Timed hardware information retrieval
         """
 
-
         # Check version when not starting
         if not start:
             self.check_versions()
-            
+
         # Get hardware info
         self.get_hardware_info()
 
         init_config = get_init_config()
         hardware_info_cycle = init_config.get('agent_init_hw', {})
         cycle_second = int(hardware_info_cycle.get('conf_val', 24 * 60))
+
+        if cycle_second < 3 * 60:
+            cycle_second = 3 * 60
 
         # Execute again at 00:00 every day
         task_id = set_timeout(cycle_second * 60, self.timing_hardware_info)

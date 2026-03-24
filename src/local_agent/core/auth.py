@@ -18,12 +18,15 @@ def auth_token():
         logger.error("Local info cache is empty, cannot obtain authentication token")
         return False
 
+    logger.debug(f"Requesting authentication token with local info: {local_info.to_dict()}")
     # [Initiate network] request
     res = http_post(
         url="/auth/device/login",
         data=local_info.to_dict(),
         is_token=False
     )
+    
+    logger.debug(f"Received authentication token response: {res}")
 
     body = res.get('data')
 
@@ -68,3 +71,16 @@ def refresh_token():
         return False
 
     return True
+
+def update_token():
+    """Update authentication token"""
+    logger.debug(f"update_token Start")
+    refresh_result = refresh_token()
+    if refresh_result:
+        return True
+    
+    auth_result = auth_token()
+    if auth_result:
+        return True
+    
+    return False

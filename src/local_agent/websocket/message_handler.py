@@ -16,12 +16,14 @@ from ..utils.subprocess_utils import run_with_logging_safe
 from ..utils.message_tool import show_message_box
 from ..core.global_cache import cache, get_agent_status, set_agent_status, set_ek_test_info, get_agent_status_by_key, get_ek_test_info
 from ..core.constants import APP_UPDATE_CACHE_KEY
-from ..core.app_update import update_app
+from ..core.app_update import upload_dmr, update_app
 from ..core.ek import EK
 from ..core.vnc import VNC
 from ..config import get_config
 from local_agent.utils.http_client import http_post
+import requests
 
+api_host = get_config().get('message_api_url')
 
 class WebSocketMessageHandler:
     """WebSocket message handler class"""
@@ -169,6 +171,7 @@ class WebSocketMessageHandler:
         async def handle_host_offline_notification(message: Dict[str, Any]):
             """Handle host offline notification"""
             stop_ek_test()
+            upload_dmr()
 
         # Track EK status tracking tasks
         self.ek_tracking_tasks = set()
@@ -204,10 +207,26 @@ class WebSocketMessageHandler:
                         if is_con:
                             # Start EK test
                             test_info = get_ek_test_info()
-                            response = http_post(
-                                url=f"{get_config().get('message_api_url')}/test_start",
-                                data=test_info
-                            )
+
+
+                            response = requests.post(f"{api_host}/test_start", json=test_info, timeout=30)
+                            
+                            state = 3
+                            result_msg = "{\"code\":\"200\",\"msg\":\"ok\"}"
+
+                            if response.status_code == 200:
+                                result = response.json()
+                                if result.get("success"):
+                                    state = 2
+                                    result_msg = "{\"code\":\"400\",\"msg\":\"ek start Error\"}"
+
+                            http_post(url="/host/agent/testcase/report", data={
+                                "tc_id": test_info.get('tc_id', ''),
+                                "state": state,
+                                "result_msg": result_msg,
+                                "log_url": "None",
+                            })
+                                
                             # EK.start_test(test_info['tc_id'], test_info['cycle_name'], test_info['user_name'])
                             set_agent_status(pre = False)
                     elif not status['test']:
@@ -216,7 +235,7 @@ class WebSocketMessageHandler:
                             # Execute update compensation
                             log_id = get_ek_test_info()['log_id']
                             logger.stop_log_replica(replica_id = log_id)
-                            update_app()
+                            upload_dmr()
                             return
 
                     # Rest 10 seconds

@@ -6,6 +6,7 @@ Provides utility functions for calling asynchronous WebSocket methods in synchro
 import asyncio
 import logging
 from typing import Optional, Any
+from local_agent.utils.http_client import http_post
 
 logger = logging.getLogger(__name__)
 
@@ -175,7 +176,9 @@ class WebSocketSyncUtils:
 # Convenience functions
 def stop_websocket_sync() -> bool:
     """Convenience function: synchronously stop WebSocket service"""
-    return WebSocketSyncUtils.stop_websocket()
+    res = WebSocketSyncUtils.stop_websocket()
+    http_post(url="/host/agent/offline/notify")
+    return res
 
 
 def start_websocket_sync(application: Optional[Any] = None) -> bool:

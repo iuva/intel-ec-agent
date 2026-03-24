@@ -11,8 +11,12 @@ import sys
 import time
 from pathlib import Path
 from typing import Optional, Callable
+from ..config import get_config
 
 import requests
+
+
+appConfig = get_config()
 
 # Check if running as standalone script
 if __name__ == "__main__":
@@ -271,8 +275,30 @@ class FileDownloader:
                 self.logger.info(f"Saving to: {save_path}")
                 self.logger.info(f"Request headers: {headers}")
                 
+                # Configure SSL verification (disable for self-signed certificates)
+                verify_ssl = appConfig.get('verify_ssl', True)
+                if not verify_ssl:
+                    import urllib3
+                    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+        
+
                 # Use requests for synchronous download
-                response = requests.get(url, headers=headers, stream=True, timeout=self.timeout)
+                response = requests.get(url, headers=headers, stream=True, timeout=self.timeout, verify=verify_ssl)
+
+                if response.status_code == 401:
+                    from ..core.auth import refresh_token, auth_token
+                    
+                    # First try to refresh token
+                    refresh_result = refresh_token()
+                    if refresh_result:
+                        return self.download_sync(url, save_path, progress_callback)
+                    
+                    # If refresh fails, try to re-obtain token
+                    self.logger.warning("Token refresh failed, attempting to re-obtain token...")
+                    auth_result = auth_token()
+                    if auth_result:
+                        return self.download_sync(url, save_path, progress_callback)
+
                 
                 if response.status_code not in (200, 206):
                     raise Exception(f"HTTP {response.status_code}: {response.reason}")

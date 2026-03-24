@@ -175,11 +175,17 @@ class MessageAPIService:
             """
             Because EK program has user interface, this interface should be called using service for startup
             """
-            EK.start_test(body['tc_id'], body['cycle_name'], body['user_name'])
-            return MessageResponse(
-                success=True,
-                user_choice="confirm"
-            )
+            res = EK.start_test(body['tc_id'], body['cycle_name'], body['user_name'])
+            if res:
+                return MessageResponse(
+                    success=True,
+                    user_choice="confirm"
+                )
+            else:
+                return MessageResponse(
+                    success=False,
+                    error="Test start failed"
+                )
         
         
         @self.app.get("/get_sut", response_model=MessageResponse)

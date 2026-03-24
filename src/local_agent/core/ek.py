@@ -4,7 +4,7 @@
 import shutil
 import psutil
 import os
-from ..utils.subprocess_utils import run_con_or_none
+from ..utils.subprocess_utils import run_con_or_none, run_as_admin
 from ..logger import get_logger
 from ..utils.python_utils import PythonUtils
 from ..utils.path_utils import PathUtils
@@ -22,6 +22,7 @@ ek_com = ek_base_path + 'ek.exe'
 class EK:
     """EK [command encapsulation] class - [automatically records sub] process execution log"""
 
+
     @staticmethod
     def env_check():
         """
@@ -37,7 +38,7 @@ class EK:
         )
         
         if is_python_ok:
-            logger.error('Execution Kit virtual environment python is available')
+            logger.info('Execution Kit virtual environment python is available')
             return
 
         # Try to delete the relative path ek directory
@@ -154,8 +155,8 @@ class EK:
         Start test
         """
         # Use enhanced subprocess execution tool to automatically record execution process and results
-        return run_con_or_none(
-            [ek_com, 'launch', tc_id, cycle_name, f'"{user_name}"'],
+        return run_as_admin(
+            [ek_com, 'launch', tc_id,  cycle_name, user_name],
             command_name='ek_start',
             capture_output=True,
             text=True,
@@ -171,7 +172,7 @@ class EK:
         root_path = PathUtils.get_root_path()
 
         # Use enhanced subprocess execution tool to automatically record execution process and results
-        return run_con_or_none(
+        return run_as_admin(
             ['cmd', '/c', 'echo', 'y', '|', f'{root_path}\{ek_cmd_com}', 'kill', '--all'],
             command_name='ek_kill',
             capture_output=True,

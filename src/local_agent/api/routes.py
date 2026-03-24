@@ -13,10 +13,10 @@ from ..config import get_config
 from ..logger import get_logger
 from local_agent.utils.http_client import http_post, http_put
 from ..utils.timer_utils import clear_timeout, set_timeout
-from ..core.global_cache import cache, set_agent_status, set_dmr_info, get_agent_status_by_key, get_dmr_upload_task_id, get_dmr_info, set_dmr_upload_task_id
+from ..core.global_cache import cache, set_agent_status, set_dmr_info, get_agent_status_by_key, get_dmr_upload_task_id, get_dmr_info, set_dmr_upload_task_id, get_ek_test_info
 from ..core.constants import HARDWARE_INFO_TASK_ID
-from ..core.app_update import update_app
-from ..core.host_init import VNC, EK
+from ..core.app_update import upload_dmr
+from ..core.host_init import VNC, EK, DMR
 from ..utils.message_tool import show_message_box
 
 router = APIRouter()
@@ -74,6 +74,7 @@ async def ek_start_result(request: EKResultRequest):
     """
     try:
 
+        logger.debug(f"Start result report request: {request}")
         event = request.event
 
         details = event.details
@@ -83,7 +84,7 @@ async def ek_start_result(request: EKResultRequest):
             "tc_id": details.get('tc_id', ''),
             # "state": 1,
             "state": 1 if event.status_code == '0' else 3,
-            "result_msg": "{\"code\":\"200\",\"msg\":\"ok\"}",
+            "result_msg": "{\"code\":\"200\",\"msg\":\"ok\"}" if event.status_code == '0' else "{\"code\":\"400\",\"msg\":\"failed\"}",
             "log_url": "None",
         })
 
@@ -138,7 +139,11 @@ def ek_startup_failure():
 
     EK.test_kill()
     if result == "Retry":
-        EK.start_test()
+        import time
+        time.sleep(10)
+        
+        test_info = get_ek_test_info()
+        EK.start_test(test_info['tc_id'], test_info['cycle_name'], test_info['user_name'])
     else:
         set_agent_status(test=False)
 
@@ -178,13 +183,13 @@ async def report_tool_result(request: EKResultRequest):
             )
         
         # Report hardware info
-        upload_dmr()
+        if event.status_code == '0':
+            upload_dmr()
+            set_agent_status(test=False)
 
-        set_agent_status(test=False)
-        
-        test = get_agent_status_by_key('vnc')
-        if test:
-            set_timeout(5, is_close_vnc)
+            test = get_agent_status_by_key('vnc')
+            if test:
+                set_timeout(5, is_close_vnc)
 
         return CommonResponse(
             code=res_data.get('code'),
@@ -253,6 +258,8 @@ async def report_dmr_result(request: DMRResultPayload):
             task_id = cache.get(HARDWARE_INFO_TASK_ID)
             if task_id:
                 clear_timeout(task_id)
+                cache.set(HARDWARE_INFO_TASK_ID, '')
+
 
         body = {
             "name": request.tool,
@@ -270,6 +277,7 @@ async def report_dmr_result(request: DMRResultPayload):
             logger.info("Starting call: upload_dmr")
             upload_dmr()
 
+        DMR.kill_dmr()
 
         return CommonResponse(
             code=0,
@@ -284,50 +292,3 @@ async def report_dmr_result(request: DMRResultPayload):
             msg=f"Processing failed: {str(e)}"
         )
 
-
-def upload_dmr():
-    """Report DMR hardware info"""
-    logger.info("Called: upload_dmr")
-    info = get_dmr_info()
-    logger.info(f"DMR hardware info report: {info}")
-    if info:
-        
-        # Clear hardware info reporting timed task to avoid duplicate reporting
-        task_id = get_dmr_upload_task_id()
-        if task_id:
-            clear_timeout(task_id)
-            set_dmr_upload_task_id("")
-
-        # Hardware info reporting
-        res = http_post(url="/host/agent/hardware/report", data = info)
-        
-        logger.info(f"Hardware info report result: {res}")
-        
-        res_data = res.get('data', {})
-        res_code = res_data.get('code', 0)
-        if res_code != 200:
-            logger.error(f"Hardware info report failed: {res}")
-
-            # Timed report again after 15 minutes
-            tack_id = set_timeout(900, upload_dmr)
-            set_dmr_upload_task_id(tack_id)
-
-            # Stop WebSocket service
-            from ..utils.websocket_sync_utils import stop_websocket_sync
-            stop_websocket_sync()
-            
-            return False
-        
-        set_agent_status(sut=False)
-        set_dmr_info(None)
-        
-        # Start WebSocket service
-        if str(info.get('type')) == "0":
-            from ..utils.websocket_sync_utils import start_websocket_sync
-            start_websocket_sync(True)
-
-        logger.info("Hardware info report successful")
-        # Execute update compensation
-        update_app()
-
-    return True

@@ -47,6 +47,13 @@ class HttpClient:
         # Create session object
         self.session = requests.Session()
         
+        # Configure SSL verification (disable for self-signed certificates)
+        self.verify_ssl = self.config.get('verify_ssl', True)
+        if not self.verify_ssl:
+            self.session.verify = False
+            import urllib3
+            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+        
         # Set up default request headers
         self.session.headers.update({
             'Content-Type': 'application/json',
@@ -257,7 +264,8 @@ class HttpClient:
         # Prepare request parameters
         request_kwargs = {
             'timeout': kwargs.pop('timeout', self.timeout),
-            'headers': request_headers
+            'headers': request_headers,
+            'verify': self.verify_ssl
         }
         
         # Handle request data
@@ -365,8 +373,8 @@ class HttpClient:
                         'url': full_url
                     }
             
-        except requests.exceptions.ConnectionError:
-            self.logger.error(f"{method} connection error: {full_url}")
+        except requests.exceptions.ConnectionError as e:
+            self.logger.error(f"{method} connection error: {full_url}, error: {e}")
             return {
                 'status_code': 503,
                 'success': False,
