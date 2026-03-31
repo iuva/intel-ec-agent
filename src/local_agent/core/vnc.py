@@ -124,6 +124,7 @@ class VNC:
             text=True,
             timeout=10  # 10 second timeout
         )
+        return VncRes(state=0, err_msg="", Processes=[])
 
 
     @staticmethod

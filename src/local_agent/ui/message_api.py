@@ -12,6 +12,7 @@ from typing import Optional
 from fastapi import FastAPI
 from pydantic import BaseModel
 from local_agent.core.ek import EK
+from local_agent.core.dmr import DMR
 from typing import Dict, Any
 from ..utils.version_utils import get_app_version
 from ..utils.subprocess_utils import run_con_or_none, run_async, run_as_admin
@@ -193,6 +194,12 @@ class MessageAPIService:
             """
             Because EK program has user interface, this interface should be called using service for startup
             """
+
+            if(DMR.version() is None):
+                return MessageResponse(
+                    success=False,
+                    error="DMR is not found"
+                )
 
             run_async(['dmr-config', 'sut'])
 

@@ -95,9 +95,18 @@ class DMR:
         # [Directly use] dmr_com, [it's already a relative] path
         # run_async([dmr_com, 'sut'])
         
-        http_get(
-            url=f"{api_host}/get_sut",
-        )
+        response = requests.get(f"{api_host}/get_sut", timeout=30)
+
+        res = response.content
+        logger.info(f"Response type: {type(res)}")
+        
+        # Convert bytes to string and then parse JSON
+        res_str = res.decode('utf-8')
+        
+        # Parse JSON
+        json_data = json.loads(res_str)
+        
+        return json_data.get('success')
         
 
     @staticmethod

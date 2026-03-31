@@ -48,9 +48,16 @@ class HostInit:
         self.logger = get_logger(__name__)
         self.logger.info("Host initialization starting")
 
-
         # TryStart VNC Service
-        VNC.start_vncserver()
+        vnc_res = VNC.start_vncserver()
+        while vnc_res.state != 0:
+            show_message_box(
+                msg=f"VNC service start failed: {vnc_res.err_msg}",
+                title="Initialization failed",
+                confirm_text="Retry"
+            )
+            vnc_res = VNC.start_vncserver()
+            
 
         # python Initialize
         PythonUtils.get_python_check()
@@ -145,7 +152,14 @@ class HostInit:
                 import time
                 DMR.kill_dmr()
                 time.sleep(10)
-                DMR.get_hardware_info()
+                
+                while not DMR.get_hardware_info():
+                    show_message_box(
+                        msg=f"The dmr config program was not found. Please install it manually and try again",
+                        title="Initialization failed",
+                        confirm_text="Retry"
+                    )
+
                 self.logger.info("Obtained hardware info - call completed")
 
         old_task_id = cache.get(HARDWARE_INFO_TASK_ID)
@@ -170,6 +184,8 @@ class HostInit:
 
         # Get hardware info
         self.get_hardware_info()
+        
+        self.init_config()
 
         init_config = get_init_config()
         hardware_info_cycle = init_config.get('agent_init_hw', {})

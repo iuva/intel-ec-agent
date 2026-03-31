@@ -72,9 +72,9 @@ if ($ExistingTask) {{
 # Create task action (default is UI mode)
 $Action = New-ScheduledTaskAction -Execute $ExePath -WorkingDirectory $WorkingDir
 
-# Create trigger (start on user logon with 30-second delay)
+# Create trigger (start on user logon with 10-minute delay)
 $Trigger = New-ScheduledTaskTrigger -AtLogOn
-$Trigger.Delay = "PT30S"  # 30-second delay, wait for system stability
+$Trigger.Delay = "PT10M"  # 10-minute delay, wait for system stability
 
 # Create task settings
 $Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
