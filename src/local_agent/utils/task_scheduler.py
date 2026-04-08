@@ -126,6 +126,48 @@ if ($Task) {{
         except Exception as e:
             logger.error(f"Failed to repair task scheduler: {e}")
             return False
+
+    def cleanup_auto_start_tasks(self) -> bool:
+        """Cleanup task scheduler auto-start tasks"""
+        try:
+            ps_script = f"""
+$TaskNames = @("LocalAgentUI", "LocalAgent", "local_agent", "local_agent_ui", "{self.task_name}") | Select-Object -Unique
+$Removed = 0
+
+foreach ($Name in $TaskNames) {{
+    $Task = Get-ScheduledTask -TaskName $Name -ErrorAction SilentlyContinue
+    if ($Task) {{
+        Unregister-ScheduledTask -TaskName $Name -Confirm:$false -ErrorAction SilentlyContinue
+        $Removed++
+    }}
+}}
+
+$LegacyTasks = Get-ScheduledTask -ErrorAction SilentlyContinue | Where-Object {{
+    ($_.TaskName -like "*LocalAgent*") -or ($_.Description -like "*Local Agent UI Process Auto-start*")
+}}
+
+foreach ($Task in $LegacyTasks) {{
+    Unregister-ScheduledTask -TaskName $Task.TaskName -TaskPath $Task.TaskPath -Confirm:$false -ErrorAction SilentlyContinue
+    $Removed++
+}}
+
+Write-Output "RemovedCount=$Removed"
+"""
+            result = subprocess.run(
+                ["powershell", "-Command", ps_script],
+                capture_output=True,
+                text=True,
+                timeout=60
+            )
+
+            if result.returncode == 0:
+                logger.info(f"Task scheduler cleanup completed: {result.stdout.strip()}")
+                return True
+            logger.error(f"Task scheduler cleanup failed: {result.stderr}")
+            return False
+        except Exception as e:
+            logger.error(f"Exception cleaning up task scheduler: {e}")
+            return False
     
     def verify_task_execution(self) -> bool:
         """Verify if task scheduler can execute normally"""
@@ -174,6 +216,16 @@ def configure_ui_auto_start() -> bool:
         return scheduler.configure_auto_start()
     except Exception as e:
         logger.error(f"Failed to configure UI process auto-start: {e}")
+        return False
+
+
+def cleanup_ui_auto_start_tasks() -> bool:
+    """Cleanup UI process auto-start tasks (external call interface)"""
+    try:
+        scheduler = TaskScheduler()
+        return scheduler.cleanup_auto_start_tasks()
+    except Exception as e:
+        logger.error(f"Failed to cleanup UI process auto-start tasks: {e}")
         return False
 
 

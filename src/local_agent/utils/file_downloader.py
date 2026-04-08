@@ -6,8 +6,6 @@ Supports synchronous and asynchronous downloads, includes resumable downloads, a
 """
 
 import asyncio
-import os
-import sys
 import time
 from pathlib import Path
 from typing import Optional, Callable

@@ -10,7 +10,7 @@ from ..core.global_cache import cache, set_agent_status, get_agent_status_by_key
 from .constants import LOCAL_INFO_CACHE_KEY, HARDWARE_INFO_TASK_ID, HARDWARE_INFO_CYCLE_TASK_ID
 from .ek import EK
 from .dmr import DMR
-from ..utils.version_utils import get_app_version, is_newer_version
+from ..utils.version_utils import get_app_version, is_newer_version, extract_version
 from local_agent.utils.http_client import http_get, http_client, http_post
 from ..utils.environment import Environment
 from ..core.auth import update_token
@@ -96,7 +96,9 @@ class HostInit:
         cache.set(LOCAL_INFO_CACHE_KEY, local_info)
 
         # Update token every 23.8 hours
-        set_interval(23.8 * 60 * 60, update_token)
+        update_token()
+        interval = 23.8 * 60 * 60
+        set_interval(interval, update_token, interval)
 
         self.init_config()
 
@@ -199,19 +201,7 @@ class HostInit:
         # Cache timed task id
         cache.set(HARDWARE_INFO_CYCLE_TASK_ID, task_id)
 
-
-    def check_versions(self):
-        """
-        Check ek and kw versions
-        """
-        # Get current software version
-        current_version = get_app_version(False)
-        
-        self.logger.info(f"Current software version: {current_version}")
-
-        # Get latest version info from service
-        versionInfo = None
-
+    def get_version_info(self):
 
         while True:
             try:
@@ -229,15 +219,13 @@ class HostInit:
                         confirm_text="Retry"
                     )
 
-
                     self.logger.info("User chose to retry, re-obtaining version info")
                     continue
                 else:
                     arr = res_data.get('data')
 
-                    versionInfo = {item['conf_name']: item for item in arr}
-                    break
-            
+                    return {item['conf_name']: item for item in arr}
+
             except Exception as e:
                 self.logger.error(f"Obtained version info exception: {e}")
                 result = show_message_box(
@@ -248,6 +236,18 @@ class HostInit:
 
                 self.logger.info("User chose to retry, re-obtaining version info")
                 continue
+
+    def check_versions(self):
+        """
+        Check ek and kw versions
+        """
+        # Get current software version
+        current_version = get_app_version(False)
+        
+        self.logger.info(f"Current software version: {current_version}")
+
+        # Get latest version info from service
+        versionInfo = self.get_version_info()
 
         self.logger.info(f"Latest version info: {versionInfo}")
 
@@ -324,7 +324,20 @@ class HostInit:
             if ek_is_new:
                 self.logger.info('Execution Kit needs update')
                 report_version('ek', ek_new_version, 1)
-                EK.update(ekVersion.get('conf_url', None))
+                res, msg = EK.update(ekVersion.get('conf_url', None))
+
+                if not res:
+                    v = extract_version(EK.version())
+                    if v is None:
+                        while not res:
+                            show_message_box(
+                                msg=f"EK installation failed: {msg}",
+                                title="Initialization failed",
+                                confirm_text="Retry"
+                            )
+                            versionInfo = self.get_version_info()
+                            ekVersion = versionInfo.get('ek')
+                            res, msg = EK.update(ekVersion.get('conf_url', None))
 
                 # Check if update succeeded by comparing versions again
                 res = is_newer_version(ek_new_version, EK.version())
@@ -345,7 +358,23 @@ class HostInit:
             if dmr_is_new:
                 self.logger.info('dmr_config needs update')
                 report_version('dmr_config', dmr_new_version, 1)
-                DMR.update(dmrVersion.get('conf_url', None))
+
+                res, msg = DMR.update(dmrVersion.get('conf_url', None))
+
+                if not res:
+                    v = extract_version(DMR.version())
+                    if v is None:
+                        while not res:
+                            show_message_box(
+                                msg=f"DMR installation failed: {msg}",
+                                title="Initialization failed",
+                                confirm_text="Retry"
+                            )
+                            versionInfo = self.get_version_info()
+                            dmrVersion = versionInfo.get('dmr_config')
+                            res, msg = DMR.update(dmrVersion.get('conf_url', None))
+
+
                 # Check if update succeeded by comparing versions again
                 res = is_newer_version(dmr_new_version, DMR.version())
 

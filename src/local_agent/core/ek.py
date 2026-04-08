@@ -92,7 +92,7 @@ class EK:
                 logger.info('Execution Kit update successful')
             else:
                 logger.error(f'Execution Kit update failed: {resunt.get("error", "Unknown error")}')
-            return resunt.get('success', False)
+            return resunt.get('success', False), resunt.get("error", "Unknown error")
 
     @staticmethod
     def force_stop_ek_processes():

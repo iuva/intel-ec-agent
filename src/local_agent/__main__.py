@@ -538,17 +538,17 @@ def main():
                 logger.info("[INFO] Please check system service status manually and restart A process")
                 sys.exit(1)
             
-            # Step 1.5: Configure UI process auto-start via Windows Task Scheduler
-            logger.info("[INFO] Configuring UI process auto-start via Windows Task Scheduler...")
+            # Step 1.5: Cleanup legacy UI auto-start tasks from Windows Task Scheduler
+            logger.info("[INFO] Cleaning up legacy UI auto-start tasks from Windows Task Scheduler...")
             try:
-                from local_agent.utils.task_scheduler import configure_ui_auto_start
-                if configure_ui_auto_start():
-                    logger.info("[INFO] UI process auto-start configuration completed successfully")
+                from local_agent.utils.task_scheduler import cleanup_ui_auto_start_tasks
+                if cleanup_ui_auto_start_tasks():
+                    logger.info("[INFO] Legacy UI auto-start task cleanup completed successfully")
                 else:
-                    logger.warning("[WARN] UI process auto-start configuration failed, but continuing startup")
+                    logger.warning("[WARN] Legacy UI auto-start task cleanup failed, but continuing startup")
             except Exception as e:
-                logger.warning(f"[WARN] Failed to configure UI process auto-start: {e}")
-                logger.info("[INFO] Continuing startup despite auto-start configuration failure")
+                logger.warning(f"[WARN] Failed to cleanup legacy UI auto-start tasks: {e}")
+                logger.info("[INFO] Continuing startup despite task cleanup failure")
             
             # Step 2: Check if there's already a running A process with working 8001 port
             logger.info("[INFO] Checking for existing A process with working 8001 port...")

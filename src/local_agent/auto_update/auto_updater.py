@@ -18,6 +18,7 @@ from local_agent.utils.verify_md5 import calculate_md5
 from local_agent.utils.http_client import http_client
 from local_agent.utils.file_utils import FileUtils
 from local_agent.core.tray_api import agent_update
+from local_agent.utils.message_tool import show_message_box
 
 
 class AutoUpdater:
@@ -78,8 +79,12 @@ class AutoUpdater:
                 self._update_progress('downloading', 100, 'Download completed')
                 return True
             else:
-                self._update_error('downloading', 'File download failed')
-                return False
+                show_message_box(
+                    msg=f"File download failed. Please confirm the download address is available before retrying",
+                    title="Download failed",
+                    confirm_text="Retry"
+                )
+                return await self._download_file(url, save_path)
                 
         except Exception as e:
             self._update_error('downloading', f'Download exception: {str(e)}')

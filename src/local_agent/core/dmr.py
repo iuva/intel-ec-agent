@@ -64,7 +64,7 @@ class DMR:
                 logger.info('dmr_config update successful')
             else:
                 logger.error(f'dmr_config update failed: {resunt.get("error", "Unknown error")}')
-            return resunt.get('success', False)
+            return resunt.get('success', False), resunt.get("error", "Unknown error")
 
     @staticmethod
     def kill_dmr():
