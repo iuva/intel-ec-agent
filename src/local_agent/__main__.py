@@ -225,7 +225,28 @@ def install_service_via_nssm():
                         command_name="nssm_set_startup", timeout=10)
         run_with_logging([nssm_path, 'set', service_name, 'AppDirectory', str(working_dir)], 
                         command_name="nssm_set_workingdir", timeout=10)
-        
+        # Pass key environment variables so the service resolves paths and
+        # network settings the same way as the installing user.  NSSM services
+        # default to SYSTEM which has a different USERPROFILE, no proxy
+        # settings, etc.  Without this, pip install cannot reach PyPI.
+        env_keys = [
+            "USERPROFILE", "APPDATA", "LOCALAPPDATA",
+            "HOMEDRIVE", "HOMEPATH", "USERNAME", "PATH",
+            "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY",
+            "http_proxy", "https_proxy", "no_proxy",
+        ]
+        env_extra_parts = []
+        for key in env_keys:
+            val = os.environ.get(key)
+            if val:
+                env_extra_parts.append(f"{key}={val}")
+        if env_extra_parts:
+            run_with_logging(
+                [nssm_path, 'set', service_name, 'AppEnvironmentExtra', *env_extra_parts],
+                command_name="nssm_set_env",
+                timeout=10
+            )
+            
         # Start service
         run_with_logging([nssm_path, 'start', service_name], 
                         command_name="nssm_start_service", timeout=10)
