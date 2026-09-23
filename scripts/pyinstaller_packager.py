@@ -36,12 +36,44 @@ def install_dependencies():
         subprocess.run([sys.executable, '-m', 'pip', 'install', 'pyinstaller'], check=True)
         logger.info("✅ PyInstaller installation completed")
     
-    # Install UPX (optional, for executable compression)
-    try:
-        subprocess.run(['upx', '--version'], capture_output=True)
-        logger.info("✅ UPX is already installed")
-    except (FileNotFoundError, subprocess.CalledProcessError):
-        logger.info("ℹ️  UPX not installed, executable will not be compressed (optional)")
+    # UPX is REQUIRED for executable compression
+    _find_upx_dir()  # Will raise RuntimeError if UPX not found
+
+
+def _find_upx_dir() -> str:
+    """
+    Find UPX binary directory. UPX is required for build.
+    
+    Search order:
+    1. System PATH
+    2. ec_neusoft_agent/tools/upx/
+    
+    Returns:
+        str: Directory containing upx.exe
+        
+    Raises:
+        RuntimeError: If UPX is not found
+    """
+    # Check PATH
+    upx_path = shutil.which('upx')
+    if upx_path:
+        result = subprocess.run([upx_path, '--version'], capture_output=True)
+        if result.returncode == 0:
+            logger.info(f"✅ UPX found in PATH: {upx_path}")
+            return str(Path(upx_path).parent)
+    
+    # Check local tools directory
+    local_upx = Path(__file__).parent.parent / 'tools' / 'upx' / 'upx.exe'
+    if local_upx.exists():
+        result = subprocess.run([str(local_upx), '--version'], capture_output=True)
+        if result.returncode == 0:
+            logger.info(f"✅ UPX found locally: {local_upx}")
+            return str(local_upx.parent)
+    
+    raise RuntimeError(
+        "UPX not found. UPX is required for build. "
+        "Install UPX and add to PATH, or place upx.exe in ec_neusoft_agent/tools/upx/"
+    )
 
 
 def save_md5_checksum(exe_path, checksum_file_name="local_agent_md5.txt"):
@@ -161,55 +193,43 @@ def build_exe():
         logger.warning(f"⚠️  Failed to clean build directories: {str(e)}")
         logger.info("ℹ️  Will attempt to build on existing directories")
     
-    # Check if required data files exist
-    add_data_args = []
-    
-    # Add existing files
-    if (project_root / 'requirements.txt').exists():
-        add_data_args.append('--add-data=requirements.txt;.')
-    
-    # Add VERSION file to packaging resources (critical: ensure version info is bound to exe)
-    if (project_root / 'VERSION').exists():
-        add_data_args.append('--add-data=VERSION;.')
-        logger.info("✅ Added VERSION file to packaging resources")
-    
-    if (project_root / 'scripts').exists():
-        add_data_args.append('--add-data=scripts;scripts')
-    
-    # Execute PyInstaller build
+    # 检查 spec 文件是否存在
+    spec_file = project_root / 'local_agent.spec'
+    if not spec_file.exists():
+        raise FileNotFoundError(f"Spec file not found: {spec_file}")
+
+    # UPX is REQUIRED for executable compression
+    upx_dir = _find_upx_dir()
+    logger.info(f"📦 UPX compression enabled: {upx_dir}")
+
+    # Execute PyInstaller build via spec file
+    # spec 中统一维护 entry/pathex/datas/hookspath/hiddenimports/excludes 等配置
+    # （已改为基于 spec 自身位置的相对路径，跨机器可复用）。
+    # 这里只保留全局运行控制参数 —— upx-dir/clean/noconfirm 在 spec 模式下同样生效。
     cmd = [
         sys.executable, '-m', 'PyInstaller',
-        '--name=local_agent',
-        '--onefile',  # Package as single exe file
-        '--console',  # Show console window (for debugging)
-        *add_data_args,  # Dynamically add data files
-        '--hidden-import=local_agent',
-        '--hidden-import=local_agent.api',
-        '--hidden-import=local_agent.core',
-        '--hidden-import=local_agent.websocket',
-        '--hidden-import=local_agent.keep_alive',  # New keep-alive module
-        '--hidden-import=local_agent.ui',  # New UI module
-        '--additional-hooks-dir=hooks',  # Add custom hook directory
-        '--hidden-import=tkinter',  # Critical: Add Tkinter support
-        '--hidden-import=_tkinter',  # Critical: Add Tkinter low-level support
-        '--hidden-import=fastapi',
-        '--hidden-import=uvicorn',
-        '--hidden-import=websockets',
-        '--hidden-import=psutil',
-        '--hidden-import=pywin32',
-        '--hidden-import=requests',  # Health check required
-        '--hidden-import=threading',  # Keep-alive mechanism required
-        '--hidden-import=time',  # Keep-alive mechanism required
-        '--hidden-import=subprocess',  # Keep-alive mechanism required
+        str(spec_file),
+        f'--upx-dir={upx_dir}',
         '--clean',  # Clean cache
         '--noconfirm',  # No confirmation for overwrite
-        os.path.abspath('src/local_agent/__main__.py')
     ]
-    
+
     logger.info(f"🚀 Executing build command: {' '.join(cmd)}")
-    
+
+    # Sanitize environment before running PyInstaller.
+    # A stray PYTHONPATH pointing at user-site (Windows Store Python quirk) will
+    # cause PyInstaller's dependency analyzer to pull in every package installed
+    # in user-site (Pillow-with-AVIF, cryptography, mypy, watchfiles, bcrypt,
+    # Pythonwin/MFC, etc.), nearly doubling the exe size (~22MB -> ~41MB).
+    # Force PyInstaller to only see the current venv's site-packages.
+    build_env = os.environ.copy()
+    stripped_path = build_env.pop("PYTHONPATH", None)
+    if stripped_path:
+        logger.info(f"🧹 Stripped PYTHONPATH from build env (was: {stripped_path})")
+    build_env["PYTHONNOUSERSITE"] = "1"
+
     # Use more robust way to handle output, avoid encoding issues
-    result = subprocess.run(cmd, cwd=project_root, capture_output=True, text=False)
+    result = subprocess.run(cmd, cwd=project_root, capture_output=True, text=False, env=build_env)
     
     if result.returncode == 0:
         logger.info("✅ exe file build successful")
@@ -260,8 +280,19 @@ echo  Local Agent Service Installation Script
 echo ========================================
 
 set SERVICE_NAME=LocalAgentService
-set EXE_PATH={exe_path}
-set WORKING_DIR={exe_path.parent}
+
+:: 基于脚本自身位置解析相对路径，并做绝对化规范化
+for %%I in ("%~dp0..") do set "PROJECT_ROOT=%%~fI"
+set "EXE_PATH=%PROJECT_ROOT%\\dist\\local_agent.exe"
+set "WORKING_DIR=%PROJECT_ROOT%\\dist"
+
+:: 检查打包产物是否存在
+if not exist "%EXE_PATH%" (
+    echo ❌ 未找到 local_agent.exe，请先执行打包: python scripts/pyinstaller_packager.py
+    echo 📁 期望位置: %EXE_PATH%
+    pause
+    exit /b 1
+)
 
 :: Check if NSSM is available
 where nssm >nul 2>&1

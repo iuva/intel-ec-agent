@@ -6,8 +6,19 @@ echo  Local Agent Service Installation Script
 echo ========================================
 
 set SERVICE_NAME=LocalAgentService
-set EXE_PATH=F:\testPc\dragTest\dist\local_agent.exe
-set WORKING_DIR=F:\testPc\dragTest\dist
+
+:: 基于脚本自身位置解析相对路径，并做绝对化规范化
+for %%I in ("%~dp0..") do set "PROJECT_ROOT=%%~fI"
+set "EXE_PATH=%PROJECT_ROOT%\dist\local_agent.exe"
+set "WORKING_DIR=%PROJECT_ROOT%\dist"
+
+:: 检查打包产物是否存在
+if not exist "%EXE_PATH%" (
+    echo ❌ 未找到 local_agent.exe，请先执行打包: python scripts/pyinstaller_packager.py
+    echo 📁 期望位置: %EXE_PATH%
+    pause
+    exit /b 1
+)
 
 :: Check if NSSM is available
 where nssm >nul 2>&1
@@ -30,7 +41,7 @@ if %errorlevel% == 0 (
         pause
         exit /b 0
     )
-    
+
     echo 🔄 Stopping and removing existing service...
     nssm stop %SERVICE_NAME%
     nssm remove %SERVICE_NAME% confirm
