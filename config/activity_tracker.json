@@ -1,0 +1,49 @@
+{
+  "general": {
+    "poll_interval": 60,
+    "idle_threshold": 300,
+    "pre_idle_duration": 300,
+    "max_pre_idle_duration": 1800,
+    "grace_period": 300,
+    "screen_threshold": 0.05
+  },
+  "logging": {
+    "poll_burst": 5,
+    "poll_interval_limit": 120
+  },
+  "idle_ratelimit": {
+    "enabled": true,
+    "detail_phase_s": 180,
+    "backoff_intervals_s": [
+      60,
+      120,
+      180,
+      300,
+      900,
+1800
+    ],
+    "samples_per_interval": 5
+  },
+  "detectors": {
+    "input_enabled": true,
+    "process_enabled": true,
+    "screen_enabled": true,
+    "user_session_enabled": false
+  },
+  "process_whitelist": [
+    "python.*\\.exe::.*pytest.*",
+    "python.*\\.exe::.*stress.*",
+    "python.*\\.exe::.*test_.*\\.py",
+    "python.*\\.exe::.*run_tc.*",
+    "itp\\.exe",
+    "opencsd\\.exe",
+    "pytest\\.exe",
+    ".*\\.pl$"
+  ],
+  "process_blacklist": [
+    "python.*\\.exe::.*local_agent.*",
+    "python.*\\.exe::.*watchdog.*",
+    "python.*\\.exe::.*activity_monitor.*"
+  ],
+  "process_custom_duration": {}
+}

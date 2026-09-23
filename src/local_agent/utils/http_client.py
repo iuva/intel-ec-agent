@@ -328,43 +328,38 @@ class HttpClient:
             
         except requests.exceptions.Timeout:
             self.logger.error(f"{method} request timeout: {full_url}")
-            
-            # Infinite retry logic: Wait 2 minutes after timeout and request again
+
+            # Bounded retry: up to 3 attempts with 10s delay between each
             import time
-            retry_delay = 120  # 2 minutes
-            
-            while True:
-                self.logger.warning(f"Request timeout, waiting for {retry_delay} seconds before retry: {full_url}")
+            max_retries = 3
+            retry_delay = 10
+
+            for attempt in range(1, max_retries + 1):
+                self.logger.warning(f"Timeout retry {attempt}/{max_retries}, waiting {retry_delay}s: {full_url}")
                 time.sleep(retry_delay)
-                
+
                 try:
                     self.logger.info(f"Starting retry request: {full_url}")
-                    
+
                     response = self.session.request(method, full_url, **request_kwargs)
-                    
-                    # Handle response
+
                     result = self._handle_response(response)
-                    
-                    # If request succeeds, return result
+
                     if result['success']:
                         self.logger.info(f"Retry request successful: {full_url}")
                         return result
-                    
-                    # If request fails but not timeout, return error
+
                     if result.get('status_code') != 408:
                         self.logger.warning(f"Retry request failed (non-timeout error): {full_url}")
                         return result
-                    
-                    # If it's timeout error, continue retry loop
+
                     self.logger.error(f"Retry request still timeout: {full_url}")
-                    
+
                 except requests.exceptions.Timeout:
-                    # Still timeout during retry, continue loop
-                    self.logger.error(f"Retry request timeout: {full_url}")
+                    self.logger.error(f"Retry request timeout (attempt {attempt}): {full_url}")
                     continue
-                    
+
                 except Exception as e:
-                    # Other exceptions, return error
                     self.logger.error(f"Retry request exception: {full_url}, error: {e}")
                     return {
                         'status_code': 500,
@@ -372,6 +367,14 @@ class HttpClient:
                         'data': {'error': f'Retry request exception: {str(e)}'},
                         'url': full_url
                     }
+
+            self.logger.error(f"All {max_retries} timeout retries exhausted: {full_url}")
+            return {
+                'status_code': 408,
+                'success': False,
+                'data': {'error': f'Request timeout after {max_retries} retries'},
+                'url': full_url
+            }
             
         except requests.exceptions.ConnectionError as e:
             self.logger.error(f"{method} connection error: {full_url}, error: {e}")

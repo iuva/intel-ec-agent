@@ -46,3 +46,6 @@ INIT_CONFIG_CACHE_KEY = "init_config_cache_key"
 
 # Hardware information acquisition cycle task ID
 HARDWARE_INFO_CYCLE_TASK_ID = "hardware_info_cycle_task_id"
+
+# Adhoc session state cache key
+MANUAL_SESSION_CACHE_KEY = "adhoc_session_cache_key"

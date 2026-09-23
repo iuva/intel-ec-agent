@@ -6,8 +6,8 @@ Define all FastAPI interface routes
 """
 
 from fastapi import APIRouter, Body
-from pydantic import BaseModel
-from typing import Dict, Any
+from pydantic import BaseModel, validator
+from typing import Dict, Any, Union
 
 from ..config import get_config
 from ..logger import get_logger
@@ -26,8 +26,12 @@ config = get_config()
 class EKResultEvent(BaseModel):
     """EK result reporting request model"""
     type: str
-    status_code: str
+    status_code: Union[str, int]
     details: Dict[str, Any]
+
+    @validator('status_code', pre=True)
+    def coerce_status_code(cls, v):
+        return str(v)
 
 class EKResultRequest(BaseModel):
     """EK result reporting request model"""
@@ -43,10 +47,14 @@ class DMRResultDetails(BaseModel):
     output_data: Dict[str, Any]
 
 class DMRResultEvent(BaseModel):
-    """EK result reporting request model"""
+    """DMR result reporting request model"""
     type: str
-    status_code: str
+    status_code: Union[str, int]
     details: DMRResultDetails
+
+    @validator('status_code', pre=True)
+    def coerce_status_code(cls, v):
+        return str(v)
 
 class DMRResultPayload(BaseModel):
     """EK result reporting request model"""
@@ -65,12 +73,32 @@ class CommonResponse(BaseModel):
 
 
 
+@router.post("/vnc/disconnect", response_model=CommonResponse)
+async def vnc_disconnect():
+    """
+    Remotely trigger VNC disconnect on this host.
+    Called by backend when user clicks Disconnect in Adhoc Access UI.
+    """
+    try:
+        is_connected = VNC.is_connecting()
+        if not is_connected:
+            return CommonResponse(code=0, msg="No active VNC connection")
+
+        VNC.disconnect()
+        set_agent_status(vnc=False)
+        logger.info("VNC disconnect triggered via HTTP API")
+        return CommonResponse(code=0, msg="VNC disconnected")
+    except Exception as e:
+        logger.error(f"VNC disconnect failed: {e}")
+        return CommonResponse(code=1, msg=f"Disconnect failed: {str(e)}")
+
+
 @router.post("/ek/start/result", response_model=CommonResponse)
 async def ek_start_result(request: EKResultRequest):
     """
     EK start result reporting interface
-    
-    
+
+
     """
     try:
 
@@ -86,6 +114,7 @@ async def ek_start_result(request: EKResultRequest):
             "state": 1 if event.status_code == '0' else 3,
             "result_msg": "{\"code\":\"200\",\"msg\":\"ok\"}" if event.status_code == '0' else "{\"code\":\"400\",\"msg\":\"failed\"}",
             "log_url": "None",
+            "exec_log_id": get_ek_test_info().get('exec_log_id'),
         })
 
         if event.status_code == '1':
@@ -106,7 +135,7 @@ async def ek_start_result(request: EKResultRequest):
         })
 
         logger.debug(f"Start result report response: {res}")
-        
+
         res_data = res.get('data', {})
         res_code = res_data.get('code', 0)
         if res_code != 200:
@@ -141,7 +170,7 @@ def ek_startup_failure():
     if result == "Retry":
         import time
         time.sleep(10)
-        
+
         test_info = get_ek_test_info()
         EK.start_test(test_info['tc_id'], test_info['cycle_name'], test_info['user_name'])
     else:
@@ -153,7 +182,7 @@ def ek_startup_failure():
 async def report_tool_result(request: EKResultRequest):
     """
     EK result reporting interface
-    
+
     This interface waits for EK calls, and after being called, it reports the organized information to the server
     """
     try:
@@ -168,10 +197,11 @@ async def report_tool_result(request: EKResultRequest):
             "state": 2 if event.status_code == '0' else 3,
             "result_msg": "{\"code\":\"200\",\"msg\":\"ok\"}",
             "log_url": "None",
+            "exec_log_id": get_ek_test_info().get('exec_log_id'),
         })
 
         logger.debug(f"Test result report response: {res}")
-        
+
         res_data = res.get('data', {})
         res_code = res_data.get('code', 0)
         if res_code != 200:
@@ -181,7 +211,7 @@ async def report_tool_result(request: EKResultRequest):
                 code=res_data.get('code'),
                 msg=res_data.get('message')
             )
-        
+
         # Report hardware info
         if event.status_code == '0':
             upload_dmr()
@@ -222,7 +252,7 @@ def is_close_vnc():
 async def report_dmr_result(tc_id: str):
     """
     Hardware info result reporting interface
-    
+
     This interface waits for EK calls, and after being called, it reports the organized information to the server
     """
     file_path = logger.get_latest_replica_file()
@@ -247,7 +277,7 @@ async def report_dmr_result(tc_id: str):
 async def report_dmr_result(request: DMRResultPayload):
     """
     Hardware info result reporting interface
-    
+
     This interface waits for EK calls, and after being called, it reports the organized information to the server
     """
     try:
@@ -283,8 +313,8 @@ async def report_dmr_result(request: DMRResultPayload):
             code=0,
             msg="success"
         )
-        
-        
+
+
     except Exception as e:
         logger.error(f"Error occurred while processing result report: {str(e)}")
         return CommonResponse(

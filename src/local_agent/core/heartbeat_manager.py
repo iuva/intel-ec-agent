@@ -247,22 +247,7 @@ class HeartbeatManager:
                 except Exception as e:
                     self.logger.debug(f"API status check failed ({api_host}:{api_port}): {e}")
                 
-                # If both endpoints fail, try using 127.0.0.1 as alternative (if current is not 127.0.0.1)
-                if api_host != '127.0.0.1':
-                    try:
-                        async with session.get(f'http://127.0.0.1:{api_port}/health', timeout=5) as response:
-                            if response.status == 200:
-                                return True
-                    except Exception as e:
-                        self.logger.debug(f"Alternative API health check failed (127.0.0.1:{api_port}): {e}")
-                
-                # Finally try localhost
-                try:
-                    async with session.get(f'http://localhost:{api_port}/health', timeout=5) as response:
-                        if response.status == 200:
-                            return True
-                except Exception as e:
-                    self.logger.debug(f"localhost API health check failed: {e}")
+                self.logger.warning(f"API health check failed on {api_host}:{api_port}")
             
             return False
             

@@ -323,60 +323,56 @@ class WebSocketClient:
         await self._start_reconnect()
     
     async def _start_reconnect(self):
-        """Start [reconnection mechanism]"""
-        # Check [if service was stopped] via stop method, if [yes then do not reconnect]
+        """Start reconnection with exponential backoff (no permanent give-up)."""
         if self.stopped_by_user:
             self.logger.info("Detected service stopped by stop method, not reconnecting")
             return
-        
+
         if self.reconnect_task and not self.reconnect_task.done():
             return
-        
-        max_attempts = self.config.get('max_restart_attempts', 3)
-        if self.reconnect_attempts >= max_attempts:
-            self.logger.error(f"Reached maximum reconnection attempts: {max_attempts}")
-            return
-        
+
         self.reconnect_attempts += 1
-        reconnect_interval = self.config.get('websocket_reconnect_interval', 10)
-        
-        self.logger.info(f"Attempting reconnection {self.reconnect_attempts} times after {reconnect_interval} seconds...")
-        
-        self.reconnect_task = asyncio.create_task(self._reconnect_after_delay(reconnect_interval))
-    
+        base_interval = self.config.get('websocket_reconnect_interval', 10)
+        # Exponential backoff: 10s, 20s, 40s, 80s, capped at 300s (5min)
+        backoff = min(base_interval * (2 ** (self.reconnect_attempts - 1)), 300)
+
+        self.logger.info(f"Reconnection attempt {self.reconnect_attempts}, waiting {backoff}s...")
+
+        self.reconnect_task = asyncio.create_task(self._reconnect_after_delay(backoff))
+
     async def _reconnect_after_delay(self, delay: int):
         """[Reconnect after delay]"""
         await asyncio.sleep(delay)
-        
+
         if not self.connected:
             # Check token status，if [expired then handle authentication first]
             from ..core.global_cache import cache
             token = cache.get(AUTHORIZATION_CACHE_KEY)
-            
+
             if not token:
                 self.logger.info("Detected token expired, handling authentication first...")
                 if not await self._handle_auth_expired():
                     self.logger.error("Authentication handling failed, unable to reconnect")
                     return
-            
+
             await self.connect()
-    
+
     def set_on_message(self, callback: Callable):
         """Set [message receive callback]"""
         self.on_message_callback = callback
-    
+
     def set_on_connect(self, callback: Callable):
         """Set [connection] success [callback]"""
         self.on_connect_callback = callback
-    
+
     def set_on_disconnect(self, callback: Callable):
         """Set [disconnect callback]"""
         self.on_disconnect_callback = callback
-    
+
     def set_on_error(self, callback: Callable):
         """Set error [callback]"""
         self.on_error_callback = callback
-    
+
     def get_status(self) -> dict:
         """Get client [status]"""
         return {
@@ -385,12 +381,12 @@ class WebSocketClient:
             "websocket_url": self.config.get('websocket_url'),
             "last_activity": datetime.now().isoformat()
         }
-    
+
     async def __aenter__(self):
         """Asynchronous [context] management [manager entry]"""
         await self.connect()
         return self
-    
+
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Asynchronous [context] management [manager exit]"""
         await self.disconnect()

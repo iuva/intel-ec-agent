@@ -150,13 +150,13 @@ class EK:
 
 
     @staticmethod
-    def start_test(tc_id: str, cycle_name: str, user_name: str):
+    def start_test(tc_id: str, cycle_name: str, user_name: str, hardware_id):
         """
         Start test
         """
         # Use enhanced subprocess execution tool to automatically record execution process and results
         return run_as_admin(
-            [ek_com, 'launch', tc_id,  cycle_name, user_name],
+            [ek_com, 'launch', tc_id,  cycle_name, user_name, '--hw-guid', hardware_id],
             command_name='ek_start',
             capture_output=True,
             text=True,

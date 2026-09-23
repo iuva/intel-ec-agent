@@ -12,3 +12,4 @@ aiohttp==3.9.1
 requests==2.31.0
 pystray==0.19.4
 Pillow==10.1.0
+mss>=9.0.1
